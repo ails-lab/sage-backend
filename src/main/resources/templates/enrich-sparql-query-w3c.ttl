@@ -1,0 +1,139 @@
+@prefix rr:    <http://www.w3.org/ns/r2rml#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix http: 	<http://www.w3.org/2011/http#> .
+@prefix time: <http://www.w3.org/2006/time#> .
+@prefix oa: <http://www.w3.org/ns/oa#> .
+@prefix as: <https://www.w3.org/ns/activitystreams#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+@prefix dr:   <http://islab.ntua.gr/ns/d2rml#> .
+@prefix op:  <http://islab.ntua.gr/ns/d2rml-op#> .
+@prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
+
+@prefix collection:    <http://sw.islab.ntua.gr/semaspace/resource/annotation/> .
+@prefix model: <http://sw.islab.ntua.gr/semaspace/model/>
+
+<#SPARQLEndpoint>
+   a is:SPARQLService ;
+   is:uri "{@@iirdfsource@@}" .
+   
+<#RemoteSPARQLEndpoint>
+   a is:SPARQLService ;
+   is:uri "{@@endpoint@@}" .
+   
+<#SPARQLTransformation>
+   rr:logicalTable [ 
+      dr:source <#RemoteSPARQLEndpoint> ;
+      dr:sparqlQuery "{@@query@@}" ;   
+   ] ;
+   dr:parameterBindings ( [ 
+      dr:parameter "endpoint" ;
+      rr:constant "{@@endpoint@@}" ;
+   ] [ 
+      dr:parameter "query" ;
+      rr:constant "{@@sparql-query@@}" ;
+   ] [ 
+      dr:parameter "literal" ;
+      rr:column "{##ppLITERAL##}" ;
+      dr:valueType rr:Literal ;
+   ] [ 
+      dr:parameter "lexicalValue" ;
+      rr:column "{##ppLEXICAL-VALUE##}" ;
+   ] [ 
+      dr:parameter "language" ;
+      rr:column "language" ;
+   ] ) .
+
+<#EnrichMapping>  
+   a  <http://islab.ntua.gr/ns/d2rml#PrimaryTriplesMap> ;
+   rr:logicalTable [ 
+      dr:source <#SPARQLEndpoint> ;
+      dr:sparqlQuery "SELECT ?id ?literal ?lexicalValue ?language WHERE { GRAPH <{@@iigraph@@}> { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) } }" ;      
+	  is:parameters ( [ 
+         a is:ExternalVariable;
+         is:name "iigraph" ;
+      ] [ 
+         a is:ExternalVariable;
+         is:name "iiproperty" ;
+      ] ) ;
+   ] ;
+   dr:transformations ( <#SPARQLTransformation> ) ;
+   dr:pivot [ 
+      dr:transformationReference <#SPARQLTransformation> ;
+   ] ;
+   {##ppPREPROCESS##}
+   rr:subjectMap [ 
+      dr:definedColumns ( [
+         dr:name "UUID" ;
+         dr:function op:uuid ; 
+      ] );
+      rr:template  "{@collection}{UUID}" ;
+      rr:class oa:Annotation ;
+      rr:class model:TermAnnotation ;
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate as:generator ;
+      rr:objectMap [
+         rr:constant "{@@iiannotator@@}" ; 
+         rr:termType rr:IRI ;
+      ] ;
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate dcterms:created ;
+      rr:objectMap [
+         dr:definedColumns ( [
+            dr:name "TIME" ;
+            dr:function op:currentTime; 
+         ] );          
+         rr:column "TIME";
+         rr:datatype xsd:dateTime ;
+         rr:termType rr:Literal ;
+      ]
+   ] ;    
+   rr:predicateObjectMap [ 
+      rr:predicate oa:hasTarget ;
+      rr:objectMap  [ 
+	     rr:parentTriplesMap [
+		   rr:subjectMap [
+			  rr:termType rr:BlankNode;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate oa:hasSource ;
+			  rr:objectMap [
+			     rr:column "id" ;
+			  ] ;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate <http://sw.islab.ntua.gr/annotation/onProperty> ;
+			  rr:objectMap [
+			     rr:constant "{@@iiproperty@@}" ;
+				 rr:termType rr:Literal ;
+			  ] ;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate <http://sw.islab.ntua.gr/annotation/onValue> ;
+			  rr:objectMap [
+			     rr:column "literal" ;
+				 rr:termType rr:Literal;
+			  ] ;
+		   ] ;
+		];
+	 ];
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate  oa:hasBody ;
+	  rr:objectMap [
+         rr:column "uri";
+         dr:transformationReference <#SPARQLTransformation> ;
+      ] ;
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate  <http://sw.islab.ntua.gr/annotation/score> ;
+	  rr:objectMap [
+         rr:column "score";
+         dr:transformationReference <#SPARQLTransformation> ;
+         rr:datatype xsd:double;
+      ] ;
+   ] .
+

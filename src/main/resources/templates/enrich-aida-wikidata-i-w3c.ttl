@@ -1,0 +1,269 @@
+@prefix rr:    <http://www.w3.org/ns/r2rml#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix http: 	<http://www.w3.org/2011/http#> .
+@prefix time: <http://www.w3.org/2006/time#> .
+@prefix oa: <http://www.w3.org/ns/oa#> .
+@prefix as: <https://www.w3.org/ns/activitystreams#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+@prefix dr:   <http://islab.ntua.gr/ns/d2rml#> .
+@prefix op:  <http://islab.ntua.gr/ns/d2rml-op#> .
+@prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
+@prefix cnt: <http://www.w3.org/2011/content#> .
+
+@prefix collection:    <http://sw.islab.ntua.gr/semaspace/resource/annotation/> .
+@prefix model: <http://sw.islab.ntua.gr/semaspace/model/>
+
+<#SPARQLEndpoint>
+   a is:SPARQLService ;
+   is:uri "{@@iirdfsource@@}" .
+   
+<#AIDAService>
+   a is:HTTPSource ;
+   is:request [ 
+      http:absoluteURI "https://gate.d5.mpi-inf.mpg.de/aida/service/disambiguate" ;
+      http:methodName "POST" ;
+      http:headers ( [ http:fieldName "Content-Type" ;
+                       http:fieldValue "application/json" ; ] ) ;
+      http:body [ a cnt:ContentAsText ; 
+                  cnt:chars "{\"text\" : \"{@@text@@}.\" }" ; ] ;
+   ] ;
+   is:parameters ( [ 
+      a is:DataVariable;
+      is:name "text" ;
+   ] ) .
+   
+<#AIDAMapping>
+   dr:logicalSource [ 
+      dr:source <#AIDAService> ;
+      dr:iterator "$";
+	  dr:referenceFormulation is:JSONPath;
+   ] ;
+   dr:parameterBinding [ 
+      dr:parameter "text" ;
+      rr:column "{##ppLEXICAL-VALUE##}" ;
+      dr:escapeType dr:EscapeJSON ;
+   ] .	
+   
+<#AIDAMapping2>
+   dr:logicalSource [ 
+      dr:source [
+         a is:FileSource ;
+         is:string "{@@string@@}" ;
+         is:parameter [ 
+            a is:DataVariable;
+            is:name "string" ;
+         ] ;
+      ] ;
+      dr:iterator "$.mentions";
+	  dr:referenceFormulation is:JSONPath;
+   ] ;
+   dr:parameterBinding [ 
+      dr:parameter "string" ;
+      rr:column "$" ;
+      dr:transformationReference <#AIDAMapping> ;
+   ] . 
+
+<#WikidataEndpoint>
+   a is:SPARQLService ;
+   is:uri "https://query.wikidata.org/bigdata/namespace/wdq/sparql" .
+
+<#WikidataMapping>
+   rr:logicalTable [ 
+      dr:source <#WikidataEndpoint> ;
+      dr:sparqlQuery "PREFIX schema: <http://schema.org/> PREFIX wdt: <http://www.wikidata.org/prop/direct/> SELECT ?wikidataId WHERE { <{@@wikilink@@}> schema:about ?wikidataId }" ;  
+   ] ;
+   dr:parameterBinding [ 
+      dr:parameter "wikilink" ;
+      rr:column "AIDA-NORMALIZED-2" ;
+   ] .
+      
+<#EnrichMapping>  
+   a  <http://islab.ntua.gr/ns/d2rml#PrimaryTriplesMap> ;
+   rr:logicalTable [ 
+      dr:source <#SPARQLEndpoint> ;
+      dr:sparqlQuery "SELECT ?id ?literal ?lexicalValue ?language WHERE { GRAPH <{@@iigraph@@}> { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) } }" ;      
+	  is:parameters ( [ 
+         a is:ExternalVariable;
+         is:name "iigraph" ;
+      ] [ 
+         a is:ExternalVariable;
+         is:name "iiproperty" ;
+      ] ) ;
+   ] ;
+   dr:transformations ( <#AIDAMapping> <#AIDAMapping2> ) ;
+   dr:pivots ( [ 
+      dr:transformationReference <#AIDAMapping2> ;
+	  dr:locally [
+	     dr:transformations ( <#WikidataMapping> ) ;
+		 dr:pivot [ 
+		    dr:transformationReference <#WikidataMapping>  ;
+         ] ;
+		 dr:definedColumns ( [
+            dr:name "URL" ;
+            dr:function op:jsonPathEvaluate ; 
+            dr:parameterBinding [ 
+               dr:parameter "input" ;
+               rr:column "$.entityMetadata";
+               dr:transformationReference <#AIDAMapping> ;
+               dr:valueType dr:JSONObject ;
+            ] ;
+            dr:parameterBinding [
+               dr:parameter "jsonPath" ; 
+               rr:template "$['{$.bestEntity.kbIdentifier}'].url";
+               dr:transformationReference <#AIDAMapping2> ;
+           ] ;
+         ] [
+            dr:name "AIDA-NORMALIZED-1" ;
+            dr:function op:replace ; 
+            dr:parameterBinding [ 
+               dr:parameter "input" ;
+               rr:column "URL" ;
+            ] ;
+            dr:parameterBinding [ 
+               dr:parameter "regex" ;
+               rr:constant "%20" ;
+            ] ;
+            dr:parameterBinding [ 
+               dr:parameter "replacement" ;
+               rr:constant "_" ;
+            ]   
+         ] [
+            dr:name "AIDA-NORMALIZED-1B" ;
+            dr:function op:urldecode ; 
+            dr:parameterBinding [ 
+               dr:parameter "input" ;
+               rr:column "AIDA-NORMALIZED-1" ;
+            ] ;
+         ] [
+            dr:name "AIDA-NORMALIZED-2" ;
+            dr:function op:replace ; 
+            dr:parameterBinding [ 
+               dr:parameter "input" ;
+               rr:column "AIDA-NORMALIZED-1B" ;
+            ] ;
+            dr:parameterBinding [ 
+               dr:parameter "regex" ;
+               rr:constant "^http(://.*?)$" ;
+            ] ;
+            dr:parameterBinding [ 
+               dr:parameter "replacement" ;
+               rr:constant "https$1" ;
+            ] ;
+         ] ) ;
+	 ] ;
+   ] ) ;
+   {##ppPREPROCESS##}
+   rr:subjectMap [ 
+      dr:definedColumns ( [
+         dr:name "UUID" ;
+         dr:function op:uuid ; 
+      ] );
+      rr:template  "{@collection}{UUID}" ;
+      rr:class oa:Annotation ;
+      rr:class model:TermAnnotation ;
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate as:generator ;
+      rr:objectMap [
+         rr:constant "{@@iiannotator@@}" ; 
+         rr:termType rr:IRI ;
+      ] ;
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate dcterms:created ;
+      rr:objectMap [
+         dr:definedColumns ( [
+            dr:name "TIME" ;
+            dr:function op:currentTime; 
+         ] );          
+         rr:column "TIME";
+         rr:datatype xsd:dateTime ;
+         rr:termType rr:Literal ;
+      ]
+   ] ;      
+   rr:predicateObjectMap [ 
+      rr:predicate oa:hasTarget ;
+      rr:objectMap  [ 
+	     rr:parentTriplesMap [
+		   rr:subjectMap [
+			  rr:termType rr:BlankNode;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate oa:hasSource ;
+			  rr:objectMap [
+			     rr:column "id" ;
+			  ] ;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate <http://sw.islab.ntua.gr/annotation/onProperty> ;
+			  rr:objectMap [
+			     rr:constant "{@@iiproperty@@}" ;
+				 rr:termType rr:Literal ;
+			  ] ;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate <http://sw.islab.ntua.gr/annotation/onValue> ;
+			  rr:objectMap [
+			     rr:column "literal" ;
+				 rr:termType rr:Literal;
+			  ] ;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate <http://sw.islab.ntua.gr/annotation/start> ;
+			  rr:objectMap [
+                 rr:column "$.offset";
+                 dr:transformationReference <#AIDAMapping2> ;
+				 rr:datatype xsd:integer;
+			  ] ;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate <http://sw.islab.ntua.gr/annotation/end> ;
+			  rr:objectMap [
+			     dr:definedColumn [
+                    dr:name "END" ;
+                    dr:function op:mathExpressionEvaluate ; 
+                    dr:parameterBinding [ 
+                       dr:parameter "expression" ;
+                       rr:constant "_x0 + _x1";
+                    ] ;                    
+                    dr:parameterBinding [ 
+                       dr:parameter "_x0" ;
+                       rr:column "$.offset";
+                       dr:transformationReference <#AIDAMapping2> ;
+                    ] ;
+                    dr:parameterBinding [ 
+                       dr:parameter "_x1" ;
+                       rr:column "$.length";
+                       dr:transformationReference <#AIDAMapping2> ;
+                    ] ;
+                    dr:parameterBinding [ 
+                       dr:parameter "datatype" ;
+                       rr:constant xsd:integer;
+                    ] ;
+                 ] ;
+                 rr:column "END";
+				 rr:datatype xsd:integer;
+			  ] ;
+		   ] ;
+		 ] ;
+	 ];
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate  <http://sw.islab.ntua.gr/annotation/score> ;
+	  rr:objectMap [
+         rr:column "$.bestEntity.disambiguationScore";
+         dr:transformationReference <#AIDAMapping2> ;
+         rr:datatype xsd:double;
+      ] ;
+   ] ;  
+   rr:predicateObjectMap [ 
+      rr:predicate  oa:hasBody ;
+	  rr:objectMap [
+         rr:column "wikidataId";
+         rr:termType rr:IRI ;
+         dr:transformationReference <#WikidataMapping> ;
+      ] ;
+   ] .
+

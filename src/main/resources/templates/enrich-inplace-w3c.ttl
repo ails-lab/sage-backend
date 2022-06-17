@@ -1,0 +1,131 @@
+@prefix rr:    <http://www.w3.org/ns/r2rml#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix http: 	<http://www.w3.org/2011/http#> .
+@prefix time: <http://www.w3.org/2006/time#> .
+@prefix oa: <http://www.w3.org/ns/oa#> .
+@prefix as: <https://www.w3.org/ns/activitystreams#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+@prefix dr:   <http://islab.ntua.gr/ns/d2rml#> .
+@prefix op:  <http://islab.ntua.gr/ns/d2rml-op#> .
+@prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
+
+@prefix collection:    <http://sw.islab.ntua.gr/semaspace/resource/annotation/> .
+@prefix model: <http://sw.islab.ntua.gr/semaspace/model/>
+
+<#SPARQLService>
+   a is:SPARQLService ;
+   is:uri "{@@iirdfsource@@}" .
+   
+<#InPlaceService>
+   a is:HTTPSource ;
+   is:request [ 
+      http:absoluteURI "http://apps.islab.ntua.gr/inplace/api/location?text={@@text@@}" ;
+      http:methodName "GET" ;
+   ] ;
+   is:parameters ( [ 
+      a is:DataVariable;
+      is:name "text" ;
+   ] ) .
+   
+<#InPlaceMapping>
+   dr:logicalSource [ 
+      dr:source <#InPlaceService> ;
+      dr:iterator "$[*]";
+	  dr:referenceFormulation is:JSONPath;
+   ] ;
+   dr:parameterBinding [ 
+      dr:parameter "text" ;
+      rr:column "{##ppLEXICAL-VALUE##}" ;
+   ] .	
+   
+<#EnrichMapping>  
+   a  <http://islab.ntua.gr/ns/d2rml#PrimaryTriplesMap> ;
+   rr:logicalTable [ 
+      dr:source <#SPARQLService> ;
+      dr:sparqlQuery "SELECT ?id ?literal ?lexicalValue ?language WHERE { GRAPH <{@@iigraph@@}> { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) } }" ;      
+	  is:parameters ( [ 
+         a is:ExternalVariable;
+         is:name "iigraph" ;
+      ] [ 
+         a is:ExternalVariable;
+         is:name "iiproperty" ;
+      ]) ;
+   ] ;
+   dr:transformations ( <#InPlaceMapping> ) ;
+   dr:pivot [ 
+      dr:transformationReference <#InPlaceMapping> ;
+   ] ;
+   {##ppPREPROCESS##}
+   rr:subjectMap [ 
+      dr:definedColumns ( [
+         dr:name "UUID" ;
+         dr:function op:uuid ; 
+      ] );
+      rr:template  "{@collection}{UUID}" ;
+      rr:class oa:Annotation ;
+      rr:class model:SpatialAnnotation ;
+      dr:condition [
+         rr:column "$.location";
+         dr:transformationReference <#InPlaceMapping> ;
+         op:neq "";
+      ];
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate as:generator ;
+      rr:objectMap [
+         rr:constant "{@@iiannotator@@}" ; 
+         rr:termType rr:IRI ;
+      ] ;
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate dcterms:created ;
+      rr:objectMap [
+         dr:definedColumns ( [
+            dr:name "TIME" ;
+            dr:function op:currentTime; 
+         ] );          
+         rr:column "TIME";
+         rr:datatype xsd:dateTime ;
+         rr:termType rr:Literal ;
+      ]
+   ] ;  
+   rr:predicateObjectMap [ 
+      rr:predicate oa:hasTarget ;
+      rr:objectMap  [ 
+	     rr:parentTriplesMap [
+		   rr:subjectMap [
+			  rr:termType rr:BlankNode;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate oa:hasSource ;
+			  rr:objectMap [
+			     rr:column "id" ;
+			  ] ;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate <http://sw.islab.ntua.gr/annotation/onProperty> ;
+			  rr:objectMap [
+			     rr:constant "{@@iiproperty@@}" ;
+				 rr:termType rr:Literal ;
+			  ] ;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate <http://sw.islab.ntua.gr/annotation/onValue> ;
+			  rr:objectMap [
+			     rr:column "literal" ;
+				 rr:termType rr:Literal;
+			  ] ;
+		   ] ;
+		];
+	 ];
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate  oa:hasBody ;
+	  rr:objectMap [
+         rr:column "$.location";
+         dr:transformationReference <#InPlaceMapping> ;
+      ] ;
+   ] .
+
