@@ -41,6 +41,9 @@ public class SecurityConfiguration extends WebSecurityConfigurerAdapter {
     private String frontend;
 	
 	@Autowired
+	private PasswordEncoder passwordEncoder;
+	
+	@Autowired
     CustomUserDetailsService customUserDetailsService;
 
     @Autowired
@@ -57,16 +60,13 @@ public class SecurityConfiguration extends WebSecurityConfigurerAdapter {
         return super.authenticationManagerBean();
     }
     
-	@Bean
-	public PasswordEncoder passwordEncoder() {
-	    return new BCryptPasswordEncoder();
-	}
+
 
     @Override
     public void configure(AuthenticationManagerBuilder authenticationManagerBuilder) throws Exception {
         authenticationManagerBuilder
                 .userDetailsService(customUserDetailsService)
-                .passwordEncoder(passwordEncoder());
+                .passwordEncoder(passwordEncoder);
     }
     
     @Override
@@ -88,10 +88,12 @@ public class SecurityConfiguration extends WebSecurityConfigurerAdapter {
             .and()
         .authorizeRequests()
             //Authorize all static resource and documentation requests
+            .antMatchers("/ws/**")
+                .permitAll()
             .antMatchers("/",
                 "/favicon.ico", "/**/*.png", "/**/*.gif", "/**/*.svg", "/**/*.jpg", "/**/*.html", "/**/*.css", "/**/*.js")
                 .permitAll()
-            .antMatchers("/api-docs", "/api-docs/**", "/swagger-ui/*")
+            .antMatchers("/api-docs", "/api-docs/**", "/swagger-ui/*", "/resource/**")
                 .permitAll()
             //Authorize login endpoint
             .antMatchers("/api/auth/**")
@@ -106,8 +108,11 @@ public class SecurityConfiguration extends WebSecurityConfigurerAdapter {
                 .authenticated()
             .antMatchers("/api/access/**")
                 .hasAnyAuthority("SUPER", "EDITOR")
+            
+            .antMatchers("/api/triple-stores/**", "/api/users/get-all", "/api/users/get-info", "api/users/update-roles")
+                .hasAnyAuthority("ADMINISTRATOR")
             //Other rules
-            .antMatchers("/api/data/**", "/api/mappings/**",  "/api/files/**", "/api/annotation/**", "/api/paged-annotation-validation/**", "/api/filter-annotation-validation/**", "/api/dataset/**", "/api/annotation-edit-group/**", "/api/vocabularizer/**", "/api/server/**", "/api/database/**", "/api/d2rml/**")
+            .antMatchers("api/campaigns/**", "/api/data/**", "/api/mappings/**",  "/api/files/**", "/api/annotation/**", "/api/paged-annotation-validation/**", "/api/filter-annotation-validation/**", "/api/dataset/**", "/api/annotation-edit-group/**", "/api/vocabularizer/**", "/api/server/**", "/api/database/**", "/api/d2rml/**")
                 .authenticated()
             .antMatchers("/api/mappings/**", "/api/users/**", "/api/files/**", "/api/annotation/**", "/api/paged-annotation-validation/**", "/api/filter-annotation-validation/**", "/api/dataset/**", "/api/annotation-edit-group/**", "/api/vocabularizer/**", "/api/server/**", "/api/database/**", "/api/d2rml/**")
                 .permitAll()
@@ -138,7 +143,7 @@ public class SecurityConfiguration extends WebSecurityConfigurerAdapter {
 //        configuration.setExposedHeaders(Arrays.asList("*"));
         configuration.setMaxAge(MAX_AGE_SECS);
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration);
+        source.registerCorsConfiguration("/api/**", configuration);
         return source;
-    }    
+    }
 }

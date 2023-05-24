@@ -11,13 +11,13 @@
 @prefix op:  <http://islab.ntua.gr/ns/d2rml-op#> .
 @prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
 
-@prefix collection:    <http://sw.islab.ntua.gr/semaspace/resource/annotation/> .
+@prefix collection: <{##ppRESOURCE_PREFIX##}>
 
 <#SPARQLService>
    a is:SPARQLService ;
    is:uri "{@@iirdfsource@@}" .
    
-<#EnrichMapping>  
+<#ValidateMapping>  
    a  <http://islab.ntua.gr/ns/d2rml#PrimaryTriplesMap> ;
    rr:logicalTable [ 
       dr:source <#SPARQLService> ;
@@ -93,14 +93,14 @@
 			  ] ;
 		   ] ;
 		   rr:predicateObjectMap [
-		      rr:predicate <http://sw.islab.ntua.gr/annotation/start> ;
+		      rr:predicate oa:start ;
 			  rr:objectMap [
 			     rr:column "start" ;
 			     rr:termType rr:Literal ;
 			  ] ;
 		   ] ;
 		   rr:predicateObjectMap [
-		      rr:predicate <http://sw.islab.ntua.gr/annotation/end> ;
+		      rr:predicate oa:end ;
 			  rr:objectMap [
 			     rr:column "end" ;
 			     rr:termType rr:Literal ;

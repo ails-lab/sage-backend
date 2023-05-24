@@ -1,31 +1,30 @@
 package ac.software.semantic.payload;
 
+import java.util.List;
+
 import org.springframework.data.annotation.Id;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-
-import ac.software.semantic.controller.NegativeFilter;
-import ac.software.semantic.model.AnnotationEditType;
 import ac.software.semantic.model.AnnotationEditValue;
+import ac.software.semantic.model.constants.AnnotationEditType;
 
 public class AnnotationEditResponse {
    @Id
    private String id;
 
-//   private String datasetId;
-   
-//   private String onProperty;
-//   private String propertyValue;
    private AnnotationEditValue propertyValue;
    
    private String annotationValue;
    
    private AnnotationEditType editType;
    
-   private int start;
-   private int end;
+   private Integer start;
+   private Integer end;
    
    private int count;
+   
+   private String target;
+   
+   private List<ValueAnnotationReference> references;
    
    public AnnotationEditResponse() {
    }
@@ -38,6 +37,8 @@ public class AnnotationEditResponse {
 		this.start = edit.getStart();
 		this.end = edit.getEnd();
 		this.count = edit.getCount();
+		this.target = edit.getTarget();
+		this.references = edit.getReferences();
 	}
 
 	public String getId() {
@@ -48,30 +49,6 @@ public class AnnotationEditResponse {
    		this.id = id;
    	}
    	
-//	public String getDatasetId() {
-//		return datasetId;
-//	}
-//
-//	public void setDatasetId(String datasetId) {
-//		this.datasetId = datasetId;
-//	}
-//
-//	public String getOnProperty() {
-//		return onProperty;
-//	}
-//
-//	public void setPropertyUri(String onProperty) {
-//		this.onProperty = onProperty;
-//	}
-//
-//	public String getPropertyValue() {
-//		return propertyValue;
-//	}
-//
-//	public void setPropertyValue(String propertyValue) {
-//		this.propertyValue = propertyValue;
-//	}
-
 	public AnnotationEditType getEditType() {
 		return editType;
 	}
@@ -96,19 +73,19 @@ public class AnnotationEditResponse {
 		this.propertyValue = propertyValue;
 	}
 
-	public int getStart() {
+	public Integer getStart() {
 		return start;
 	}
 
-	public void setStart(int start) {
+	public void setStart(Integer start) {
 		this.start = start;
 	}
 
-	public int getEnd() {
+	public Integer getEnd() {
 		return end;
 	}
 
-	public void setEnd(int end) {
+	public void setEnd(Integer end) {
 		this.end = end;
 	}
 
@@ -118,6 +95,22 @@ public class AnnotationEditResponse {
 
 	public void setCount(int count) {
 		this.count = count;
+	}
+
+	public String getTarget() {
+		return target;
+	}
+
+	public void setTarget(String target) {
+		this.target = target;
+	}
+
+	public List<ValueAnnotationReference> getReferences() {
+		return references;
+	}
+
+	public void setReferences(List<ValueAnnotationReference> references) {
+		this.references = references;
 	}
 
 

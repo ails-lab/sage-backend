@@ -1,21 +1,23 @@
 package ac.software.semantic.payload;
 
+import ac.software.semantic.model.AnnotationEditValue;
+
 public class ValueResponse {
-    private String value;
+    private AnnotationEditValue value;
     private int count;
-    private boolean isLiteral;
+//    private boolean isLiteral;
     
-    public ValueResponse(String value, int count, boolean isLiteral) {
+    public ValueResponse(AnnotationEditValue value, int count) {
     	this.value = value;
     	this.count = count;
-    	this.isLiteral = isLiteral;
+//    	this.isLiteral = isLiteral;
     }
     
-	public String getValue() {
+	public AnnotationEditValue getValue() {
 		return value;
 	}
 	
-	public void setValue(String value) {
+	public void setValue(AnnotationEditValue value) {
 		this.value = value;
 	}
 	
@@ -28,12 +30,12 @@ public class ValueResponse {
 		this.count = count;
 	}
 
-	public boolean isLiteral() {
-		return isLiteral;
-	}
-
-	public void setLiteral(boolean isLiteral) {
-		this.isLiteral = isLiteral;
-	}
+//	public boolean isLiteral() {
+//		return isLiteral;
+//	}
+//
+//	public void setLiteral(boolean isLiteral) {
+//		this.isLiteral = isLiteral;
+//	}
 
 }

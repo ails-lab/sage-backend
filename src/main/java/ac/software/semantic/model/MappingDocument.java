@@ -1,13 +1,19 @@
 package ac.software.semantic.model;
 
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 
+import ac.software.semantic.model.constants.MappingType;
+import ac.software.semantic.model.state.MappingState;
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @Document(collection = "MappingDocuments")
 public class MappingDocument {
    
@@ -17,9 +23,12 @@ public class MappingDocument {
    private ObjectId userId;
    private ObjectId datasetId;
    
+   private ObjectId databaseId;
+   
    private String name;
-   private String d2rml;
+   private String d2rml; // legacy only json d2rml;
    private String fileName;
+   private String fileContents;
    
    private String uuid;
    
@@ -30,33 +39,22 @@ public class MappingDocument {
    private List<DependencyBinding> dependencies;
    
    private List<MappingInstance> instances;
+   
+   private List<String> dataFiles;
+   
+   private Date updatedAt;
+   
+   private ObjectId templateId;
 
    public MappingDocument() {  
 	   this.instances = new ArrayList<>();
 	   this.dependencies = new ArrayList<>();
    }
    
-//   public MappingDocument(ObjectId userId, String name, String d2rml, String uuid, MappingType type, ObjectId datasetId, List<String> parameters) {
-//       this.userId = userId;
-//       this.name = name;
-//       this.d2rml = d2rml;
-//       this.uuid = uuid;
-//       this.type = type;
-//       this.datasetId = datasetId;
-//       this.parameters = parameters;
-//       
-//       this.instances = new ArrayList<>();
-//       
-//       if (parameters.isEmpty()) {
-//    	   instances.add(new MappingInstance());
-//       }
-//   }
-
    public ObjectId getId() {
        return id;
    }
    
-   // standard getters and setters
    public String getD2RML() {
        return d2rml;
    }
@@ -92,7 +90,8 @@ public class MappingDocument {
 	@Override
 	public String toString() {
 		return String.format("D2RMLEntry{id='%s', userId='%s', d2rml=%s}\n",
-    		   id.toString(), userId.toString(), d2rml);
+//    		   id.toString(), userId.toString(), d2rml);
+				id.toString(), userId.toString());
 	}
 
 	public String getUuid() {
@@ -126,6 +125,10 @@ public class MappingDocument {
 	public List<String> getParameters() {
 		return parameters;
 	}
+	
+	public boolean hasParameters() {
+		return parameters != null && parameters.size() > 0;
+	}
 
 	public void setParameters(List<String> parameters) {
 		if (parameters == null) {
@@ -134,7 +137,7 @@ public class MappingDocument {
 		
 		if (this.parameters == null) {
 		   this.parameters = parameters;
-		   this.instances.clear(); // should delete first instances!!!
+		   this.instances.clear(); // should delete first instances!!! what abut executions and files???
 	       
 	       if (parameters.isEmpty()) {
 	    	   instances.add(new MappingInstance());
@@ -149,7 +152,20 @@ public class MappingDocument {
 	public List<MappingInstance> getInstances() {
 		return instances;
 	}
-
+	
+	public MappingInstance getInstance(ObjectId id) {
+		if (instances != null) {
+			for (MappingInstance mi : instances) {
+				if (mi.getId().equals(id)) {
+					return mi;
+				}
+			}
+		}
+		
+		return null;
+	}
+	
+	
 	public void setInstances(List<MappingInstance> instances) {
 		this.instances = instances;
 	}
@@ -195,5 +211,69 @@ public class MappingDocument {
 
 	public void setFileName(String fileName) {
 		this.fileName = fileName;
-	}	
+	}
+
+	public Date getUpdatedAt() {
+		return updatedAt;
+	}
+
+	public void setUpdatedAt(Date updatedAt) {
+		this.updatedAt = updatedAt;
+	}
+
+	public String getFileContents() {
+		return fileContents;
+	}
+
+	public void setFileContents(String fileContents) {
+		this.fileContents = fileContents;
+	}
+
+	public ObjectId getTemplateId() {
+		return templateId;
+	}
+
+	public void setTemplateId(ObjectId templateId) {
+		this.templateId = templateId;
+	}
+
+	public List<String> getDataFiles() {
+		return dataFiles;
+	}
+
+	public void setDataFiles(List<String> dataFiles) {
+		this.dataFiles = dataFiles;
+	}
+	
+	public void addDataFile(String dataFile) {
+		if (this.dataFiles == null) {
+			this.dataFiles = new ArrayList<>();
+		}
+		
+		if (!this.dataFiles.contains(dataFile)) {
+			this.dataFiles.add(dataFile);
+		}
+	}
+	
+	
+	public void removeDataFile(String dataFile) {
+		if (dataFiles != null) {
+			dataFiles.remove(dataFile);
+			
+			if (dataFiles.size() == 0) {
+				dataFiles = null;
+			}
+		}
+	}
+
+	public ObjectId getDatabaseId() {
+		return databaseId;
+	}
+
+	public void setDatabaseId(ObjectId databaseId) {
+		this.databaseId = databaseId;
+	}
+	
+	
+	
 }

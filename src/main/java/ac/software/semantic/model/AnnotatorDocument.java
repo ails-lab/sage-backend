@@ -1,6 +1,6 @@
 package ac.software.semantic.model;
 
-import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import org.bson.types.ObjectId;
@@ -8,10 +8,14 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
+import ac.software.semantic.model.DataService.DataServiceType;
+import ac.software.semantic.model.state.AnnotatorPublishState;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @Document(collection = "AnnotatorDocuments")
-public class AnnotatorDocument {
+public class AnnotatorDocument extends MappingExecutePublishDocument<AnnotatorPublishState> implements ServiceDocument {
    
    @Id
    @JsonIgnore
@@ -22,10 +26,13 @@ public class AnnotatorDocument {
    
    @JsonIgnore
    private String datasetUuid;
+   
+   private ObjectId databaseId;
 
    private String uuid;
    
-   private List<String> onProperty;
+   private List<String> onProperty; // deprecated
+   
    private String asProperty;
    private String annotator;
    
@@ -35,21 +42,19 @@ public class AnnotatorDocument {
    
    private String thesaurus;
    
-   private List<ExecuteState> execute;
-   private List<PublishState> publish;
-   
    private List<DataServiceParameterValue> parameters;
    
    private List<PreprocessInstruction> preprocess;
    
    private ObjectId annotatorEditGroupId;
    
-   public AnnotatorDocument() {
-
-       this.execute = new ArrayList<>();
-       this.publish = new ArrayList<>();
-   }
+   private Date updatedAt;
    
+   private String defaultTarget;
+   
+   public AnnotatorDocument() {
+	   super();
+   }
 
    public ObjectId getId() {
        return id;
@@ -128,95 +133,15 @@ public class AnnotatorDocument {
 		this.parameters = parameters;
 	}
 
-	public List<PublishState> getPublish() {
-		return publish;
-	}
-
-	public void setPublish(List<PublishState> publish) {
-		this.publish = publish;
-	}
-
-	public PublishState getPublishState(ObjectId databaseConfigurationId) {
-		if (publish != null) {
-			for (PublishState s : publish) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-					return s;
-				}
-			}
-		} else {
-			publish = new ArrayList<>();
-		}
-		
-		PublishState s = new PublishState();
-		s.setPublishState(DatasetState.UNPUBLISHED);
-		s.setDatabaseConfigurationId(databaseConfigurationId);
-		publish.add(s);
-		
-		return s;	
-	}
-	
-	public PublishState checkPublishState(ObjectId databaseConfigurationId) {
-		if (publish != null) {
-			for (PublishState s : publish) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-					return s;
-				}
-			}
-		}
-		
-		return null;
-	}
-	
-	public List<ExecuteState> getExecute() {
-		return execute;
-	}
-
-	public void setExecute(List<ExecuteState> execute) {
-		this.execute = execute;
-	}	
-	
-	public ExecuteState getExecuteState(ObjectId databaseConfigurationId) {
-		if (execute != null) {
-			for (ExecuteState s : execute) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-					return s;
-				}
-			}
-		} else {
-			execute = new ArrayList<>();
-		}
-		
-		ExecuteState s = new ExecuteState();
-		s.setExecuteState(MappingState.NOT_EXECUTED);
-		s.setDatabaseConfigurationId(databaseConfigurationId);
-		execute.add(s);
-		
-		return s;
-	}
-
-	public ExecuteState checkExecuteState(ObjectId databaseConfigurationId) {
-		if (execute != null) {		
-			for (ExecuteState s : execute) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-					return s;
-				}
-			}
-		}
-		
-		return null;
-	}
-
-
 	public List<PreprocessInstruction> getPreprocess() {
 		return preprocess;
 	}
-
 
 	public void setPreprocess(List<PreprocessInstruction> preprocess) {
 		this.preprocess = preprocess;
 	}
 
-
+	@Override
 	public String getVariant() {
 		return variant;
 	}
@@ -236,5 +161,42 @@ public class AnnotatorDocument {
 		this.annotatorEditGroupId = annotatorEditGroupId;
 	}
 
+
+	public Date getUpdatedAt() {
+		return updatedAt;
+	}
+
+
+	public void setUpdatedAt(Date updatedAt) {
+		this.updatedAt = updatedAt;
+	}
+
+
+	public String getDefaultTarget() {
+		return defaultTarget;
+	}
+
+
+	public void setDefaultTarget(String defaultTarget) {
+		this.defaultTarget = defaultTarget;
+	}
+
+	@Override
+	public String getIdentifier() {
+		return getAnnotator();
+	}
+	
+	@Override
+	public DataServiceType getType() {
+		return DataServiceType.ANNOTATOR;
+	}
+
+	public ObjectId getDatabaseId() {
+		return databaseId;
+	}
+
+	public void setDatabaseId(ObjectId databaseId) {
+		this.databaseId = databaseId;
+	}
 
 }

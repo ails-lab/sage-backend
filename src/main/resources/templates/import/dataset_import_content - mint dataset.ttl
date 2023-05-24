@@ -1,0 +1,206 @@
+@prefix dct:   <http://purl.org/dc/terms/> .
+@prefix drfn:  <http://islab.ntua.gr/ns/d2rml-fn#> .
+@prefix http:  <http://www.w3.org/2011/http#> .
+@prefix skos:  <http://www.w3.org/2004/02/skos/core#> .
+
+@prefix rr:    <http://www.w3.org/ns/r2rml#> .
+@prefix dr:    <http://islab.ntua.gr/ns/d2rml#> .
+@prefix dris:  <http://islab.ntua.gr/ns/d2rml-is#> .
+@prefix drop:  <http://islab.ntua.gr/ns/d2rml-op#> .
+
+@prefix minto: <http://ails.ece.ntua.gr/mint/ontology/> .
+
+<{@@SAGE_TEMPLATE_MAPPING_URI@@}/Specification>
+   a  dr:D2RMLSpecification ;
+   dr:logicalDatasets  ( 
+                         <{@@SAGE_TEMPLATE_MAPPING_URI@@}/AggregatorMapping> 
+                         <{@@SAGE_TEMPLATE_MAPPING_URI@@}/DatasetMapping>
+                       ) ;
+   dr:parameter  [ 
+      drop:name  "AGGREGATOR_NAME" 
+   ] ;
+   dr:parameter [ 
+      drop:name  "DATASET_ID" 
+   ] .
+
+ <{@@SAGE_TEMPLATE_MAPPING_URI@@}/AggregatorSource>
+   a  dris:HTTPSource ;
+   dris:httpRequest  [ 
+      http:absoluteURI  "http://mint-projects.image.ntua.gr/{@@AGGREGATOR_NAME@@}/api/direct/list?count=1000" ;
+      http:methodName "GET"
+   ] .
+   
+<{@@SAGE_TEMPLATE_MAPPING_URI@@}/TempModel>
+    a dris:AuxiliaryModel .
+    
+   
+<{@@SAGE_TEMPLATE_MAPPING_URI@@}/AggregatorMapping>
+   dr:logicalArray   [ 
+      a  dr:JSONItemArray ;
+      dr:iterator  "$" ;
+      dr:source <{@@SAGE_TEMPLATE_MAPPING_URI@@}/AggregatorSource> 
+   ] ;
+   
+   dr:triplesMap [ 
+      dr:logicalOutput <{@@SAGE_TEMPLATE_MAPPING_URI@@}/TempModel> ;
+   
+      rr:subjectMap  [ 
+         rr:template  "{@@SAGE_TEMPLATE_ITEM_BASE@@}mint/dataset/{@@DATASET_ID@@}" ;
+         dr:condition [
+	        dr:function drop:equals ;
+            dr:parameterBinding [ 
+	           dr:parameter "input" ;
+               rr:column "$.datasetId"  ;
+            ] ;	        
+            dr:parameterBinding [ 
+	           dr:parameter "comparand" ;
+               rr:constant "{@@DATASET_ID@@}"  ;
+            ] ;
+         ] ;
+         rr:class  minto:Dataset ;
+      ] ;
+   
+      rr:predicateObjectMap  [ 
+         rr:predicate minto:originalDatasetIdentifier ;
+
+         rr:objectMap  [ 
+            rr:column  "$.originalDatasetId" ;
+            rr:termType  rr:Literal
+         ] 
+      ] ;
+   
+      rr:predicateObjectMap  [ 
+         rr:predicate  minto:datasetIdentifier ;
+
+         rr:objectMap  [ 
+            rr:column  "$.datasetId" ;
+            rr:termType  rr:Literal
+         ] 
+      ] ;	   
+   
+      rr:predicateObjectMap  [ 
+         rr:predicate  minto:organizationIdentifier ;
+
+         rr:objectMap  [ 
+            rr:column  "$.organizationId" ;
+            rr:termType  rr:Literal
+         ] 
+      ] ;
+   ] .
+   
+
+ <{@@SAGE_TEMPLATE_MAPPING_URI@@}/DatasetSource>
+   a  dris:FileSource ;
+   dris:containerSource  [ 
+      a  dris:HTTPSource ;
+      dris:httpRequest  [ 
+         http:absoluteURI  "http://mint-projects.image.ntua.gr/{@@AGGREGATOR_NAME@@}/api/direct/download/{@@DATASET_ID@@}" ;
+         http:methodName "GET"
+      ]
+   ] ;
+   dris:path  "*" .
+   
+<{@@SAGE_TEMPLATE_MAPPING_URI@@}/DatasetMetadataTransformation>
+   rr:logicalTable [ 
+      dr:source <{@@SAGE_TEMPLATE_MAPPING_URI@@}/TempModel> ;
+	  dr:sparqlQuery "PREFIX minto: <http://ails.ece.ntua.gr/mint/ontology/> SELECT ?origDsId ?DsId ?orgId WHERE { <{@@SAGE_TEMPLATE_ITEM_BASE@@}mint/dataset/{@@DATASET_ID@@}> minto:originalDatasetIdentifier ?origDsId ; minto:datasetIdentifier ?dsId ; minto:organizationIdentifier ?orgId } ";
+   ] .     
+
+   
+<{@@SAGE_TEMPLATE_MAPPING_URI@@}/DatasetMapping>
+   dr:logicalArray   [ 
+      a  dr:XMLItemArray ;
+      dr:iterator  "." ;
+      dr:source    <{@@SAGE_TEMPLATE_MAPPING_URI@@}/DatasetSource> ;
+   ] ;
+   
+   dr:transformation [
+      dr:dataref <{@@SAGE_TEMPLATE_MAPPING_URI@@}/DatasetMetadataTransformation> ;
+      dr:transformationName "DatasetMetadataTransformation";
+      dr:parameterBinding [ 
+         dr:parameter "DATASET_ID" ;
+         rr:constant "{@@DATASET_ID@@}"  ;
+      ]  ;      
+   ] ;
+
+   dr:definedColumn  [ 
+      dr:function  drfn:inContainerPath ;
+      dr:name  "PATH"
+   ] ;
+   
+   dr:definedColumn  [ 
+      dr:function  drop:extractMatch ;
+      dr:name  "ITEM_IDS" ;
+      dr:parameterBinding  [ 
+         dr:parameterName  "input" ; 
+         rr:column  "PATH"
+      ] ;
+      dr:parameterBinding  [ 
+         dr:parameterName  "regex" ;
+         rr:constant  "^(.*?)/Item_(.*?)\\.xml$"
+      ]
+   ] ;
+   
+   dr:rdfMap  [ 
+      rr:column  "/rdf:RDF/edm:ProvidedCHO" ;
+      rr:termType  dr:RDF_XML
+   ] ;
+   
+   dr:rdfMap [
+      rr:column "/rdf:RDF/ore:Aggregation" ;
+      rr:termType dr:RDF_XML 
+   ] ;
+   
+   dr:triplesMap  [ 
+      rr:subjectMap  [ 
+         rr:class  minto:Item ;
+         rr:template  "{@@SAGE_TEMPLATE_ITEM_BASE@@}mint/item/{ITEM_IDS.match#2}"
+      ] ;
+   
+      rr:predicateObjectMap  [ 
+         rr:predicate  dct:relation ;
+         
+         rr:objectMap [ 
+            rr:column  "/rdf:RDF/edm:ProvidedCHO/@rdf:about" ;
+            rr:termType  rr:IRI
+         ] 
+      ] ;
+      
+      rr:predicateObjectMap  [ 
+         rr:predicate  minto:datasetIdentifier ;
+
+         rr:objectMap  [ 
+            rr:column  "ITEM_IDS.match#1" ;
+            rr:termType  rr:Literal
+         ] 
+      ] ;
+      
+      rr:predicateObjectMap  [ 
+         rr:predicate  minto:originalDatasetIdentifier ;
+
+         rr:objectMap  [ 
+            rr:column  "DatasetMetadataTransformation~~origDsId" ;
+            rr:termType  rr:Literal
+         ] 
+      ] ;
+      
+      rr:predicateObjectMap  [ 
+         rr:predicate  minto:organizationIdentifier ;
+
+         rr:objectMap  [ 
+            rr:column  "DatasetMetadataTransformation~~orgId" ;
+            rr:termType  rr:Literal
+         ] 
+      ] ;
+      
+      rr:predicateObjectMap  [ 
+         rr:predicate  dct:identifier ;
+
+         rr:objectMap  [ 
+            rr:column  "ITEM_IDS.match#2" ;
+            rr:termType  rr:Literal
+         ] 
+      ] ;
+      
+   ] .
+   

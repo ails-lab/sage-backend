@@ -11,6 +11,12 @@ import org.springframework.data.mongodb.core.mapping.Document;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.state.IndexState;
+import ac.software.semantic.model.state.MappingExecuteState;
+import ac.software.semantic.model.state.MappingPublishState;
+import ac.software.semantic.model.state.MappingState;
+
 
 @Document(collection = "VocabularizerDocuments")
 public class VocabularizerDocument {
@@ -33,8 +39,8 @@ public class VocabularizerDocument {
    
 //   private String executeUuid;
    
-   private List<ExecuteState> execute;
-   private List<PublishState> publish;
+   private List<MappingExecuteState> execute;
+   private List<MappingPublishState> publish;
    private List<IndexState> index;
 
    
@@ -113,17 +119,17 @@ public class VocabularizerDocument {
 		this.name = name;
 	}
 
-	public List<PublishState> getPublish() {
+	public List<MappingPublishState> getPublish() {
 		return publish;
 	}
 
-	public void setPublish(List<PublishState> publish) {
+	public void setPublish(List<MappingPublishState> publish) {
 		this.publish = publish;
 	}
 	
-	public PublishState getPublishState(ObjectId databaseConfigurationId) {
+	public MappingPublishState getPublishState(ObjectId databaseConfigurationId) {
 		if (publish != null) {
-			for (PublishState s : publish) {
+			for (MappingPublishState s : publish) {
 				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
 					return s;
 				}
@@ -132,7 +138,7 @@ public class VocabularizerDocument {
 			publish = new ArrayList<>();
 		}
 		
-		PublishState s = new PublishState();
+		MappingPublishState s = new MappingPublishState();
 		s.setPublishState(DatasetState.UNPUBLISHED);
 		s.setDatabaseConfigurationId(databaseConfigurationId);
 		publish.add(s);
@@ -140,9 +146,9 @@ public class VocabularizerDocument {
 		return s;
 	}
 
-	public PublishState checkPublishState(ObjectId databaseConfigurationId) {
+	public MappingPublishState checkPublishState(ObjectId databaseConfigurationId) {
 		if (publish != null) {		
-			for (PublishState s : publish) {
+			for (MappingPublishState s : publish) {
 				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
 					return s;
 				}
@@ -163,7 +169,7 @@ public class VocabularizerDocument {
 	public IndexState getIndexState(ObjectId databaseConfigurationId) {
 		if (index != null) {
 			for (IndexState s : index) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
+				if (s.getElasticConfigurationId().equals(databaseConfigurationId)) {
 					return s;
 				}
 			}
@@ -172,7 +178,7 @@ public class VocabularizerDocument {
 		}
 		
 		IndexState s = new IndexState();
-		s.setDatabaseConfigurationId(databaseConfigurationId);
+		s.setElasticConfigurationId(databaseConfigurationId);
 		index.add(s);
 		
 		return s;	
@@ -181,7 +187,7 @@ public class VocabularizerDocument {
 	public IndexState checkIndexState(ObjectId databaseConfigurationId) {
 		if (index != null) {
 			for (IndexState s : index) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
+				if (s.getElasticConfigurationId().equals(databaseConfigurationId)) {
 					return s;
 				}
 			}
@@ -190,17 +196,17 @@ public class VocabularizerDocument {
 		return null;
 	}
 
-	public List<ExecuteState> getExecute() {
+	public List<MappingExecuteState> getExecute() {
 		return execute;
 	}
 
-	public void setExecute(List<ExecuteState> execute) {
+	public void setExecute(List<MappingExecuteState> execute) {
 		this.execute = execute;
 	}	
 	
-	public ExecuteState getExecuteState(ObjectId databaseConfigurationId) {
+	public MappingExecuteState getExecuteState(ObjectId databaseConfigurationId) {
 		if (execute != null) {
-			for (ExecuteState s : execute) {
+			for (MappingExecuteState s : execute) {
 				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
 					return s;
 				}
@@ -209,7 +215,7 @@ public class VocabularizerDocument {
 			execute = new ArrayList<>();
 		}
 		
-		ExecuteState s = new ExecuteState();
+		MappingExecuteState s = new MappingExecuteState();
 		s.setExecuteState(MappingState.NOT_EXECUTED);
 		s.setDatabaseConfigurationId(databaseConfigurationId);
 		execute.add(s);
@@ -217,9 +223,9 @@ public class VocabularizerDocument {
 		return s;
 	}
 
-	public ExecuteState checkExecuteState(ObjectId databaseConfigurationId) {
+	public MappingExecuteState checkExecuteState(ObjectId databaseConfigurationId) {
 		if (execute != null) {		
-			for (ExecuteState s : execute) {
+			for (MappingExecuteState s : execute) {
 				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
 					return s;
 				}

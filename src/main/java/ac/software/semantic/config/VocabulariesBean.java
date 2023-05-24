@@ -6,7 +6,6 @@ public class VocabulariesBean {
 	private Map<String, VocabularyInfo> map;
 	
 	public VocabulariesBean() {
-		
 	}
 
 	public Map<String, VocabularyInfo> getMap() {

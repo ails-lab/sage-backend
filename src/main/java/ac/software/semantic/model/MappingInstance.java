@@ -1,27 +1,29 @@
 package ac.software.semantic.model;
 
 import java.util.ArrayList;
-import java.util.Date;
+import java.util.Collection;
 import java.util.List;
 
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 
-public class MappingInstance {
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.state.MappingPublishState;
+
+public class MappingInstance extends MappingExecutePublishDocument<MappingPublishState> {
 	   @Id
 	   private ObjectId id;
-	   
-	   private List<ExecuteState> execute;
-	   private List<PublishState> publish;
 
 	   private List<ParameterBinding> binding;
+	   
+	   private List<String> dataFiles;
 	   
 //	   private String uuid;
 	   
 	   public MappingInstance() {
 		   id = new ObjectId();
-		   execute = new ArrayList<>();
-		   setPublish(new ArrayList<>());
+//		   execute = new ArrayList<>();
+//		   publish = new ArrayList<>();
 		   
 		   binding = new ArrayList<>();
 	   }
@@ -38,7 +40,10 @@ public class MappingInstance {
 	       return id;
 	   }	   
 	
-
+	   public boolean hasBinding() {
+		   return binding != null && binding.size() > 0; 
+	   }
+	   
 		public List<ParameterBinding> getBinding() {
 			return binding;
 		}
@@ -46,102 +51,30 @@ public class MappingInstance {
 		public void setBinding(List<ParameterBinding> binding) {
 			this.binding = binding;
 		}
-
-		public List<PublishState> getPublish() {
-			return publish;
+		public List<String> getDataFiles() {
+			return dataFiles;
 		}
 
-		public void setPublish(List<PublishState> publish) {
-			this.publish = publish;
-		}
-
-		public PublishState getPublishState(ObjectId databaseConfigurationId) {
-			if (publish != null) {
-				for (PublishState s : publish) {
-					if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-						return s;
-					}
-				}
-			} else {
-				publish = new ArrayList<>();
-			}
-			
-			PublishState s = new PublishState();
-			s.setPublishState(DatasetState.UNPUBLISHED);
-			s.setDatabaseConfigurationId(databaseConfigurationId);
-			publish.add(s);
-			
-			return s;
-		}
-
-		public PublishState checkPublishState(ObjectId databaseConfigurationId) {
-			if (publish != null) {
-				for (PublishState s : publish) {
-					if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-						return s;
-					}
-				}
-			}
-			
-			return null;
-		}
-
-		public List<ExecuteState> getExecute() {
-			return execute;
-		}
-
-		public void setExecute(List<ExecuteState> execute) {
-			this.execute = execute;
-		}	
-		
-		public ExecuteState getExecuteState(ObjectId databaseConfigurationId) {
-			if (execute != null) {
-				for (ExecuteState s : execute) {
-					if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-						return s;
-					}
-				}
-			} else {
-				execute = new ArrayList<>();
-			}
-			
-			ExecuteState s = new ExecuteState();
-			s.setExecuteState(MappingState.NOT_EXECUTED);
-			s.setDatabaseConfigurationId(databaseConfigurationId);
-			execute.add(s);
-			
-			return s;
-		}
-
-		public ExecuteState checkExecuteState(ObjectId databaseConfigurationId) {
-			if (execute != null) {		
-				for (ExecuteState s : execute) {
-					if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-						return s;
-					}
-				}
-			}
-			
-			return null;
-		}		
-		
-		public void deleteExecuteState(ObjectId databaseConfigurationId) {
-			if (execute != null) {
-				for (int i = 0; i < execute.size(); i++) {
-					if (execute.get(i).getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-						execute.remove(i);
-						break;
-					}
-				}
-			} else {
-				execute = new ArrayList<>();
-			}
+		public void setDataFiles(List<String> dataFiles) {
+			this.dataFiles = dataFiles;
 		}
 		
-		public synchronized void removePublishState(PublishState ps) {
-			if (publish != null) {
-				publish.remove(ps);
-			} 
+		public void addDataFile(String dataFile) {
+			if (this.dataFiles == null) {
+				this.dataFiles = new ArrayList<>();
+			}
 			
+			this.dataFiles.add(dataFile);
+		}
+		
+		
+		public void removeDataFile(String dataFile) {
+			if (dataFiles != null) {
+				dataFiles.remove(dataFile);
+				
+				if (dataFiles.size() == 0) {
+					dataFiles = null;
+				}
+			}
 		}		
 }

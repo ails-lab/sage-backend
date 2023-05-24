@@ -5,9 +5,9 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-import ac.software.semantic.model.DatasetState;
-import ac.software.semantic.model.IndexingState;
-import ac.software.semantic.model.MappingState;
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.constants.IndexingState;
+import ac.software.semantic.model.state.MappingState;
 
 
 public class IndexDocumentResponse {

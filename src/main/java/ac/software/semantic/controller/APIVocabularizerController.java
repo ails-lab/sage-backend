@@ -1,6 +1,5 @@
 package ac.software.semantic.controller;
 
-
 import java.io.StringWriter;
 import java.io.Writer;
 import java.util.List;
@@ -18,7 +17,6 @@ import org.apache.jena.riot.RDFFormat;
 import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -30,23 +28,21 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.util.StdDateFormat;
 
+import ac.software.semantic.config.ConfigurationContainer;
+import ac.software.semantic.controller.utils.AsyncUtils;
 import ac.software.semantic.model.Dataset;
-import ac.software.semantic.model.DatasetState;
-import ac.software.semantic.model.IndexingState;
-import ac.software.semantic.model.MappingState;
-import ac.software.semantic.model.NotificationObject;
-import ac.software.semantic.model.VirtuosoConfiguration;
+import ac.software.semantic.model.TripleStoreConfiguration;
 import ac.software.semantic.model.VocabularizerDocument;
-import ac.software.semantic.payload.ApiResponse;
-import ac.software.semantic.payload.DatasetResponse;
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.constants.NotificationChannel;
+import ac.software.semantic.model.constants.NotificationType;
+import ac.software.semantic.payload.APIResponse;
+import ac.software.semantic.payload.NotificationObject;
 import ac.software.semantic.payload.VocabularizerRequest;
 import ac.software.semantic.payload.VocabularizerResponse;
 import ac.software.semantic.repository.DatasetRepository;
@@ -55,7 +51,7 @@ import ac.software.semantic.security.CurrentUser;
 import ac.software.semantic.security.UserPrincipal;
 import ac.software.semantic.service.ModelMapper;
 import ac.software.semantic.service.VocabularizerService;
-import edu.ntua.isci.ac.lod.vocabularies.sema.SEMAVocabulary;
+import ac.software.semantic.vocs.SEMRVocabulary;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 @Tag(name = "Vocabulizer API")
@@ -73,14 +69,17 @@ public class APIVocabularizerController {
     private VocabularizerRepository vocabularizerRepository;
 
     @Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfigurations;
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
 	
 	@Autowired
 	private ModelMapper modelMapper;
 	
+	@Autowired
+	private SEMRVocabulary resourceVocabulary;
+	
     @Autowired
-    private ApplicationEventPublisher applicationEventPublisher;
+    private WebSocketService wsService;
 
 	
 	
@@ -89,7 +88,7 @@ public class APIVocabularizerController {
 
 		VocabularizerDocument adoc = vocabularizerService.createVocabularizer(currentUser, vr.getDatasetUri(), vr.getOnProperty(), vr.getName(), vr.getSeparator());
 		
-		return ResponseEntity.ok(modelMapper.vocabularizer2VocabularizerResponse(virtuosoConfigurations.values(), adoc));
+		return ResponseEntity.ok(modelMapper.vocabularizer2VocabularizerResponse(adoc));
 		
 	} 
 	
@@ -98,7 +97,7 @@ public class APIVocabularizerController {
 
 		try {
 			
-			AsyncUtils.supplyAsync(() -> vocabularizerService.executeVocabularizer(currentUser, id, applicationEventPublisher));
+			AsyncUtils.supplyAsync(() -> vocabularizerService.executeVocabularizer(currentUser, id, wsService));
 			
 			return new ResponseEntity<>(HttpStatus.ACCEPTED);
 		} catch (Exception e) {
@@ -117,9 +116,9 @@ public class APIVocabularizerController {
 		boolean deleted = vocabularizerService.deleteVocabularizer(currentUser, id);
 		
 		if (deleted) {
-			return ResponseEntity.ok(new ApiResponse(true, "Vocabularizer deleted"));
+			return ResponseEntity.ok(new APIResponse(true, "Vocabularizer deleted"));
 		} else {
-			return ResponseEntity.ok(new ApiResponse(false, "Current user is not owner of catalog"));
+			return ResponseEntity.ok(new APIResponse(false, "Current user is not owner of catalog"));
 		}
 	}
 
@@ -135,16 +134,17 @@ public class APIVocabularizerController {
 					mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 				    mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
 				    
-					NotificationObject no = new NotificationObject("publish", DatasetState.PUBLISHING_FAILED.toString(), id, null, null, null);
+					NotificationObject no = new NotificationObject(NotificationType.publish, DatasetState.PUBLISHING_FAILED.toString(), id, null, null, null);
 							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("vocabularizer").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
+//					try {
+//						SseEventBuilder sse = SseEmitter.event().name("vocabularizer").data(mapper.writeValueAsBytes(no));
+//					
+//						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
+//					} catch (JsonProcessingException e) {
+//						// TODO Auto-generated catch block
+//						e.printStackTrace();
+//					}
+					wsService.send(NotificationChannel.vocabularizer, currentUser, no);
 				   
 				   ex.printStackTrace(); 
 				   return false; 
@@ -156,16 +156,17 @@ public class APIVocabularizerController {
 				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
 				    
-				   NotificationObject no = new NotificationObject("publish", DatasetState.PUBLISHED_PUBLIC.toString(), id, null, doc.getPublishStartedAt(), doc.getPublishCompletedAt());
+				   NotificationObject no = new NotificationObject(NotificationType.publish, DatasetState.PUBLISHED_PUBLIC.toString(), id, null, doc.getPublishStartedAt(), doc.getPublishCompletedAt());
 							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("vocabularizer").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
+//					try {
+//						SseEventBuilder sse = SseEmitter.event().name("vocabularizer").data(mapper.writeValueAsBytes(no));
+//					
+//						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
+//					} catch (JsonProcessingException e) {
+//						// TODO Auto-generated catch block
+//						e.printStackTrace();
+//					}
+				   wsService.send(NotificationChannel.vocabularizer, currentUser, no);
 			   });
 			
 //			System.out.println("PUBLISHING ACCEPTED");
@@ -189,16 +190,17 @@ public class APIVocabularizerController {
 				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
 				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
 				    
-				   NotificationObject no = new NotificationObject("publish", DatasetState.UNPUBLISHED.toString(), id, null, null, null);
+				   NotificationObject no = new NotificationObject(NotificationType.publish, DatasetState.UNPUBLISHED.toString(), id, null, null, null);
 							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("annotator").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
+//					try {
+//						SseEventBuilder sse = SseEmitter.event().name("annotator").data(mapper.writeValueAsBytes(no));
+//					
+//						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
+//					} catch (JsonProcessingException e) {
+//						// TODO Auto-generated catch block
+//						e.printStackTrace();
+//					}
+				   wsService.send(NotificationChannel.vocabularizer, currentUser, no);
 			   });
 			
 //			System.out.println("PUBLISHING ACCEPTED");
@@ -214,91 +216,91 @@ public class APIVocabularizerController {
 	} 	
 
 
-    @PostMapping(value = "/index/{id}")
-	public ResponseEntity<?> indexDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-		
-		try {
-			AsyncUtils.supplyAsync(() -> vocabularizerService.index(currentUser, id))
-			   .exceptionally(ex -> { 
-//				   	System.out.println("FAILURE");
-					ObjectMapper mapper = new ObjectMapper();
-					mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-				    mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-				    
-					NotificationObject no = new NotificationObject("index", IndexingState.INDEXING_FAILED.toString(), id, null, null, null);
-							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("vocabularizer").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				   
-				   ex.printStackTrace(); 
-				   return false; 
-				})
-			   .thenAccept(ok -> {
-				   VocabularizerResponse doc = vocabularizerService.getVocabularizer(currentUser, id).get();
-				   
-				   ObjectMapper mapper = new ObjectMapper();
-				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-				    
-				   NotificationObject no = new NotificationObject("index", IndexingState.INDEXED.toString(), id, null, doc.getPublishStartedAt(), doc.getPublishCompletedAt());
-							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("vocabularizer").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-			   });
-			
-//			System.out.println("PUBLISHING ACCEPTED");
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-
-		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-	}     
-    
-    @PostMapping(value = "/unindex/{id}")
-	public ResponseEntity<?> unindexDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-		
-		try {
-			AsyncUtils.supplyAsync(() -> vocabularizerService.unindex(currentUser, id))
-			   .exceptionally(ex -> { ex.printStackTrace(); return false; })
-			   .thenAccept(ok -> {
-				   ObjectMapper mapper = new ObjectMapper();
-				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-				    
-				   NotificationObject no = new NotificationObject("index", IndexingState.NOT_INDEXED.toString(), id, null, null, null);
-							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("vocabularizer").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-			   });
-			
-//			System.out.println("UNPUBLISHING ACCEPTED");
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-	
-		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-		
-    } 	
+//    @PostMapping(value = "/index/{id}")
+//	public ResponseEntity<?> indexDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+//		
+//		try {
+//			AsyncUtils.supplyAsync(() -> vocabularizerService.index(currentUser, id))
+//			   .exceptionally(ex -> { 
+////				   	System.out.println("FAILURE");
+//					ObjectMapper mapper = new ObjectMapper();
+//					mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+//				    mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
+//				    
+//					NotificationObject no = new NotificationObject("index", IndexingState.INDEXING_FAILED.toString(), id, null, null, null);
+//							
+//					try {
+//						SseEventBuilder sse = SseEmitter.event().name("vocabularizer").data(mapper.writeValueAsBytes(no));
+//					
+//						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
+//					} catch (JsonProcessingException e) {
+//						// TODO Auto-generated catch block
+//						e.printStackTrace();
+//					}
+//				   
+//				   ex.printStackTrace(); 
+//				   return false; 
+//				})
+//			   .thenAccept(ok -> {
+//				   VocabularizerResponse doc = vocabularizerService.getVocabularizer(currentUser, id).get();
+//				   
+//				   ObjectMapper mapper = new ObjectMapper();
+//				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+//				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
+//				    
+//				   NotificationObject no = new NotificationObject("index", IndexingState.INDEXED.toString(), id, null, doc.getPublishStartedAt(), doc.getPublishCompletedAt());
+//							
+//					try {
+//						SseEventBuilder sse = SseEmitter.event().name("vocabularizer").data(mapper.writeValueAsBytes(no));
+//					
+//						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
+//					} catch (JsonProcessingException e) {
+//						// TODO Auto-generated catch block
+//						e.printStackTrace();
+//					}
+//			   });
+//			
+////			System.out.println("PUBLISHING ACCEPTED");
+//			return new ResponseEntity<>(HttpStatus.ACCEPTED);
+//		} catch (Exception e) {
+//			e.printStackTrace();
+//		}
+//
+//		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+//	}     
+//    
+//    @PostMapping(value = "/unindex/{id}")
+//	public ResponseEntity<?> unindexDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+//		
+//		try {
+//			AsyncUtils.supplyAsync(() -> vocabularizerService.unindex(currentUser, id))
+//			   .exceptionally(ex -> { ex.printStackTrace(); return false; })
+//			   .thenAccept(ok -> {
+//				   ObjectMapper mapper = new ObjectMapper();
+//				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+//				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
+//				    
+//				   NotificationObject no = new NotificationObject("index", IndexingState.NOT_INDEXED.toString(), id, null, null, null);
+//							
+//					try {
+//						SseEventBuilder sse = SseEmitter.event().name("vocabularizer").data(mapper.writeValueAsBytes(no));
+//					
+//						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
+//					} catch (JsonProcessingException e) {
+//						// TODO Auto-generated catch block
+//						e.printStackTrace();
+//					}
+//			   });
+//			
+////			System.out.println("UNPUBLISHING ACCEPTED");
+//			return new ResponseEntity<>(HttpStatus.ACCEPTED);
+//		} catch (Exception e) {
+//			e.printStackTrace();
+//		}
+//	
+//		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+//		
+//    } 	
     
 	@GetMapping(value = "/lastExecution/{id}",
             produces = "text/plain")
@@ -326,12 +328,12 @@ public class APIVocabularizerController {
 
 		Optional<VocabularizerDocument> adoc = vocabularizerRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
 		if (adoc.isPresent()) {
-			String graph  = SEMAVocabulary.getDataset(adoc.get().getUuid()).toString();
+			String graph  = resourceVocabulary.getDatasetAsResource(adoc.get().getUuid()).toString();
 			
 			String arr = restTemplate.getForObject("http://apps.islab.ntua.gr/inknowledge/api/graph-voc-equiv?graph=" + graph, String.class);
 			
 //			String sparql = "SELECT ?s ?o WHERE " +
-//                            "GRAPH <http://sw.islab.ntua.gr/semaspace/resource/graph/content> { " + 
+//                            "GRAPH <" + SEMAVocabulary.contentGraph + "> { " + 
 //					           "<" + graph + "> <http://sw.islab.ntua.gr/apollonis/ms/class>/<http://sw.islab.ntua.gr/apollonis/ms/uri> ?clazz . " +
 //                               "<" + graph + "> <http://sw.islab.ntua.gr/apollonis/ms/dataProperty> [ " +
 //			                         " <http://purl.org/dc/elements/1.1/type> <http://www.w3.org/2000/01/rdf-schema#label> ; " +
@@ -375,12 +377,12 @@ public class APIVocabularizerController {
 			VocabularizerDocument voc = adoc.get();
 			
 		    Dataset ds = datasetRepository.findByUuid(voc.getDatasetUuid()).get();
-		    VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+		    TripleStoreConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
 
-			String graph  = SEMAVocabulary.getDataset(voc.getUuid()).toString();
+			String graph  = resourceVocabulary.getDatasetAsResource(voc.getUuid()).toString();
 			
 			String sparql = "CONSTRUCT { ?s <http://www.w3.org/2000/01/rdf-schema#label> ?o } WHERE { " +
-                            "GRAPH <http://sw.islab.ntua.gr/semaspace/resource/graph/content> { " + 
+                            "GRAPH <" + resourceVocabulary.getContentGraphResource() + "> { " + 
 					           "<" + graph + "> <http://sw.islab.ntua.gr/apollonis/ms/class>/<http://sw.islab.ntua.gr/apollonis/ms/uri> ?clazz . " +
                                "<" + graph + "> <http://sw.islab.ntua.gr/apollonis/ms/dataProperty> [ " +
 			                         " <http://purl.org/dc/elements/1.1/type> <http://www.w3.org/2000/01/rdf-schema#label> ; " +

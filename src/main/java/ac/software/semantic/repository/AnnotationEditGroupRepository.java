@@ -25,6 +25,8 @@ public interface AnnotationEditGroupRepository extends MongoRepository<Annotatio
 	List<AnnotationEditGroup> findByDatasetUuidAndUserId(String datasetUuid, ObjectId userId);
 	
 	List<AnnotationEditGroup> findByDatasetUuid(String datasetUuid);
+	
+	List<AnnotationEditGroup> findByDatasetUuidAndAutoexportable(String datasetUuid, boolean autoexportable);
 
     void deleteByDatasetUuidAndOnPropertyAndAsPropertyAndUserId(String datasetUuid, String[] onProperty, String asProperty, ObjectId userId);
 

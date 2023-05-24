@@ -15,6 +15,8 @@ public interface DataServiceRepository extends MongoRepository<DataService, Stri
 
     List<DataService> findByDatabaseIdAndType(ObjectId databaseId, DataServiceType type);
     
+    List<DataService> findByDatabaseId(ObjectId databaseId);
+    
     Optional<DataService> findByIdentifierAndType(String identifier, DataServiceType type);
 
 }

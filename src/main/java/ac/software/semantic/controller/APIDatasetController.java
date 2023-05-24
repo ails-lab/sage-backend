@@ -1,34 +1,57 @@
 package ac.software.semantic.controller;
 
-
 import java.io.StringWriter;
 import java.io.Writer;
 import java.util.*;
-import java.util.stream.Collectors;
 
-import ac.software.semantic.model.*;
-import ac.software.semantic.payload.*;
+import ac.software.semantic.config.ConfigurationContainer;
+import ac.software.semantic.model.Database;
+import ac.software.semantic.model.Dataset;
+import ac.software.semantic.model.ElasticConfiguration;
+import ac.software.semantic.model.EmbedderDocument;
+import ac.software.semantic.model.IndexStructure;
+import ac.software.semantic.model.TaskDescription;
+import ac.software.semantic.model.Template;
+import ac.software.semantic.model.TripleStoreConfiguration;
+import ac.software.semantic.model.constants.DatasetScope;
+import ac.software.semantic.model.constants.DatasetType;
+import ac.software.semantic.model.constants.TaskType;
+import ac.software.semantic.model.constants.ThesaurusLoadStatus;
+import ac.software.semantic.payload.APIResponse;
+import ac.software.semantic.payload.ClassStructureResponse;
+import ac.software.semantic.payload.CreateDatasetDistributionRequest;
+import ac.software.semantic.payload.CreateIndexRequest;
+import ac.software.semantic.payload.DatasetResponse;
+import ac.software.semantic.payload.ErrorResponse;
+import ac.software.semantic.payload.TemplateResponse;
 import ac.software.semantic.repository.DatasetRepository;
-import ac.software.semantic.service.*;
-import edu.ntua.isci.ac.lod.vocabularies.VOIDVocabulary;
-import edu.ntua.isci.ac.lod.vocabularies.Vocabulary;
-import edu.ntua.isci.ac.lod.vocabularies.sema.SEMAVocabulary;
+import ac.software.semantic.repository.EmbedderDocumentRepository;
+import ac.software.semantic.repository.IndexStructureRepository;
+import ac.software.semantic.repository.TemplateRepository;
+import ac.software.semantic.service.AnnotatorService;
+import ac.software.semantic.service.DatasetService;
+import ac.software.semantic.service.DatasetService.DatasetContainer;
+import ac.software.semantic.service.IdentifiersService;
+import ac.software.semantic.service.IndexService;
+import ac.software.semantic.service.ModelMapper;
+import ac.software.semantic.service.SchemaService;
+import ac.software.semantic.service.SchemaService.ClassStructure;
+import ac.software.semantic.service.TaskConflictException;
+import ac.software.semantic.service.ServiceProperties;
+import ac.software.semantic.service.SimpleObjectIdentifier;
+import ac.software.semantic.service.TaskService;
+import ac.software.semantic.service.TemplateService;
+import ac.software.semantic.vocs.SEMAVocabulary;
+import ac.software.semantic.vocs.SEMRVocabulary;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 
-import org.apache.jena.query.QueryExecution;
-import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
-import org.apache.jena.rdf.model.NsIterator;
-import org.apache.jena.riot.RDFDataMgr;
-import org.apache.jena.riot.RDFFormat;
 import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -39,34 +62,26 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.util.StdDateFormat;
 
 import ac.software.semantic.security.CurrentUser;
 import ac.software.semantic.security.UserPrincipal;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.ArraySchema;
-import io.swagger.v3.oas.annotations.media.Content;
-import io.swagger.v3.oas.annotations.media.Schema;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
-import org.springframework.web.servlet.tags.Param;
 
 @Tag(name = "Dataset API")
 @RestController
 @RequestMapping("/api/dataset")
 public class APIDatasetController {
 
+	@Autowired
+    @Qualifier("database")
+    private Database database;
+	
     @Autowired
  	private DatasetService datasetService;
+
+    @Autowired
+ 	private AnnotatorService annotatorService;
 
     @Autowired
  	private SchemaService schemaService;
@@ -74,25 +89,41 @@ public class APIDatasetController {
 	@Autowired
 	DatasetRepository datasetRepository;
 
-//    @Autowired
-// 	private IndexService indexService;
+	@Autowired
+	TemplateRepository templateRepository;
 
 	@Autowired
 	private ModelMapper modelMapper;
 
 	@Autowired
-	private MappingsService mappingsService;
+	private SEMRVocabulary resourceVocabulary;
+	
+    @Autowired
+    private EmbedderDocumentRepository embedderRepository;
 
-	@Autowired
-	private ApplicationEventPublisher applicationEventPublisher;
-
+    @Autowired
+    private IndexStructureRepository indexStructureRepository;
+    
 	@Autowired
 	private TemplateService templateService;
 	
+	@Autowired
+	private IndexService indexService;
+	
     @Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfigurations;
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
+    
+    @Autowired
+    @Qualifier("elastic-configurations")
+    private ConfigurationContainer<ElasticConfiguration> elasticConfigurations;
+    
+	@Autowired
+	private TaskService taskService;
 
+	@Autowired
+	private IdentifiersService idService;
+	
 	@Operation(summary = "Get datasets of logged in user.",
 			description = "This endpoint contacts the mongo database. Returns datasets created by the user. This does not concern talking with virtuoso, nor published collections")
 	@ApiResponses(value = {
@@ -103,92 +134,113 @@ public class APIDatasetController {
 					content = { @Content(mediaType = "application/json",
 							schema = @Schema(implementation = ErrorResponse.class))})
 	})
-    @GetMapping(value = "/getAll",
+    @GetMapping(value = "/get-all",
 	        produces = "application/json")
-	public ResponseEntity<?> getDatasets(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @RequestParam("type") String type)  {
-		List<DatasetResponse> list = datasetService.getDatasets(currentUser, type);
+	public ResponseEntity<?> getDatasets(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @RequestParam("scope") Optional<DatasetScope> scope, @RequestParam("type") DatasetType type)  {
+
+		List<DatasetResponse> list = datasetService.getDatasets(currentUser, scope.orElse(null), type);
+		
 		return ResponseEntity.ok(list);
 	}       
     
     @PostMapping(value = "/create",
-    		     produces = "application/json")
-    public ResponseEntity<?> createDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser,
-    		                               @RequestParam("name") String name, 
-    		                               @RequestParam("type") String type, 
-    		                               @RequestParam("typeUri") Optional<String> typeUri,
-    		                               @RequestParam("asProperty") Optional<String> asProperty,
-    		                               @RequestBody Optional<List<ResourceOption>> links)  {
+		     produces = "application/json")
+	public ResponseEntity<?> createDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser,
+			                               @RequestBody DatasetResponse body)  {
 
-    	Dataset dataset = datasetService.createDataset(currentUser, name, type, typeUri.isPresent() ? typeUri.get() : null,
-    			                                                            asProperty.isPresent() ? asProperty.get() : null,
-    			                                                            links.isPresent() ? links.get() : null, ImportType.CUSTOM);
+    	try {
+	    	TemplateResponse templateResponse = body.getTemplate();
+	    	Template template = null;
+	    	if (templateResponse != null) {
+	        	if (body.getType().equals(DatasetType.DATASET)) {
+					template = templateService.getDatasetImportTemplate(new ObjectId(templateResponse.getId()));
+					if (template == null) {
+						return ResponseEntity.badRequest().build();
+					}
+		    	} else if (body.getType().equals(DatasetType.CATALOG)) {
+		    		template = templateService.getCatalogImportTemplate(new ObjectId(templateResponse.getId()));
+					if (template == null) {
+						return ResponseEntity.badRequest().build();
+					}
+		    	}
+	    	}	
+	    	
+//			TripleStoreConfiguration vc = null;
+//			if (body.getTripleStore() != null) {
+//				vc = virtuosoConfigurations.getByName(body.getTripleStore());
+//			} 
+//			
+//			if (vc == null) {
+//				vc = virtuosoConfigurations.values().iterator().next();
+//			}
+			
+			Dataset dataset = datasetService.createDataset(currentUser, body.getName(), body.getIdentifier(), 
+		                                                   body.isPublik(), 
+//		                                                   vc, 
+		                                                   body.getScope(), body.getType(), body.getTypeUri() != null && body.getTypeUri().size() > 0 ? body.getTypeUri().get(0) : null,
+		                                                   body.getAsProperty(),
+		                                                   body.getLinks(), templateResponse);
+	
+			if (template != null) {
+//				DatasetContainer dc = datasetService.getUnpublishedContainer(currentUser, dataset.getId().toString(), vc.getName());
+				DatasetContainer dc = datasetService.getContainer(currentUser, dataset.getId().toString());
+				
+		     	TaskDescription tdescr = taskService.newTemplateDatasetTask(dc);
+		     	taskService.call(tdescr);
+			}
+	
+			DatasetResponse res = modelMapper.dataset2DatasetResponse(dataset, template);
+		
+			return ResponseEntity.ok(res);
     	
-    	DatasetResponse res = modelMapper.dataset2DatasetResponse(virtuosoConfigurations.values(), dataset);
-
-    	return ResponseEntity.ok(res);
+    	} catch (Exception ex) {
+    		ex.printStackTrace();
+    		return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+    	}
 	}
-
-	@PostMapping(value = "/create/predefined",
-			produces = "application/json")
-	public ResponseEntity<?> createEuropeanaDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser,
-													@RequestParam("datasetName") String name,
-													@RequestParam("importAs") String importAs
-													) {
-
-		ImportType importType = ImportType.get(importAs);
-
-		// Step 1: Create the empty predefinedImport dataset
-		Dataset dataset = datasetService.createDataset(currentUser, name, "collection-dataset", "http://sw.islab.ntua.gr/semaspace/model/DataCollection",
-				null, null, importType);
-
-		// Europeana Import Specific code:
-		if (importType.equals(ImportType.EUROPEANA)) {
-
-			// Step 2: Metadata Mapping + Parameter Binding + Metadata Mapping Execution
-			String d2rmlTemplate = templateService.getPredefinedImportTemplate(importType.toString(), "HEADER").getTemplateString();
-			String mappingUuid = UUID.randomUUID().toString();
-			String d2rmlResult = d2rmlTemplate.replace("{@@MAPPING_UUID@@}", mappingUuid).replace("{@@DATASET_UUID@@}", dataset.getUuid());
-
-			// Need to replace stuff in d2rml template string DATASET_UUID, MAPPING_UUID
-			MappingDocument docHead = mappingsService.create(currentUser, dataset.getId().toString(), "HEADER", "Metadata", d2rmlResult, Arrays.asList("COLLECTION"), null, mappingUuid);
-			MappingInstance miHead = mappingsService.createParameterBinding(currentUser, docHead.getId().toString(), Arrays.asList(new ParameterBinding("COLLECTION", name)));
-			mappingsService.executeMapping(currentUser, docHead.getId().toString(), miHead.getId().toString(), applicationEventPublisher);
-
-			// Step 3: Create Mapping for query and collection
-
-			d2rmlTemplate = templateService.getPredefinedImportTemplate(importType.toString(), "COLLECTION").getTemplateString();
-			mappingUuid = UUID.randomUUID().toString();
-			d2rmlResult = d2rmlTemplate.replace("{@@MAPPING_UUID@@}", mappingUuid);
-
-			MappingDocument doc = mappingsService.create(currentUser, dataset.getId().toString(), "CONTENT", "COLLECTION", d2rmlResult, Arrays.asList("COLLECTION", "API_KEY"), null, mappingUuid);
-
-			d2rmlTemplate = templateService.getPredefinedImportTemplate(importType.toString(), "QUERY").getTemplateString();
-			mappingUuid = UUID.randomUUID().toString();
-			d2rmlResult = d2rmlTemplate.replace("{@@MAPPING_UUID@@}", mappingUuid);
-
-			doc = mappingsService.create(currentUser, dataset.getId().toString(), "CONTENT", "QUERY", d2rmlResult, Arrays.asList("QUERY", "API_KEY"), null, mappingUuid);
-
-		}
-
-		DatasetResponse res = modelMapper.dataset2DatasetResponse(virtuosoConfigurations.values(), dataset);
-
-		return ResponseEntity.ok(res);
-	}
+    
 
     @PostMapping(value = "/update/{id}",
-		     produces = "application/json")
-	public ResponseEntity<?> updateDataset(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id,
-			                               @RequestParam("name") String name,
-			                               @RequestParam("type") String type,
-			                               @RequestParam("typeUri") Optional<String> typeUri,
-			                               @RequestParam("asProperty") Optional<String> asProperty,
-			                               @RequestBody Optional<List<ResourceOption>> links)  {
+		         produces = "application/json")
+	public ResponseEntity<?> updateDataset(@CurrentUser UserPrincipal currentUser, 
+			                               @PathVariable("id") String id,
+			                               @RequestBody DatasetResponse body)  {
 
-		Dataset dataset = datasetService.updateDataset(currentUser, new ObjectId(id), name, type, typeUri.isPresent() ? typeUri.get() : null,
-				                                                            asProperty.isPresent() ? asProperty.get() : null,
-				                                                            links.isPresent() ? links.get() : null, applicationEventPublisher);
+    	
+//    	TripleStoreConfiguration vc = null;
+//		if (body.getTripleStore() != null) {
+//			vc = virtuosoConfigurations.getByName(body.getTripleStore());
+//		} 
+//		
+//		if (vc == null) {
+//			vc = virtuosoConfigurations.values().iterator().next();
+//		}
+
+		idService.remove(body.getIdentifier());
+		
+		Dataset dataset = datasetService.updateDataset(currentUser, 
+				                                       new ObjectId(id), body.getName(), body.getIdentifier(), 
+				                                       body.isPublik(), 
+//				                                       vc, 
+				                                       body.getScope(), body.getType(), body.getTypeUri() != null && body.getTypeUri().size() > 0 ? body.getTypeUri().get(0) : null,
+				                                       body.getAsProperty(),
+				                                       body.getLinks());
+		
 		if (dataset != null) {
-			DatasetResponse res = modelMapper.dataset2DatasetResponse(virtuosoConfigurations.values(), dataset);
+			Template template = null;
+			if (dataset.getTemplateId() != null) {
+				template = templateRepository.findById(dataset.getTemplateId()).get();
+			}
+			
+			if (template != null) {
+//				DatasetContainer dc = datasetService.getUnpublishedContainer(currentUser, dataset.getId().toString(), vc.getName());
+				DatasetContainer dc = datasetService.getContainer(currentUser, dataset.getId().toString());
+				
+		     	TaskDescription tdescr = taskService.newTemplateDatasetUpdateTask(dc);
+		     	taskService.call(tdescr);
+			}
+			
+			DatasetResponse res = modelMapper.dataset2DatasetResponse(dataset, template);
 
 			return ResponseEntity.ok(res);
 		} else {
@@ -200,27 +252,58 @@ public class APIDatasetController {
 		           produces = "application/json")
     public ResponseEntity<?> deleteDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
 
-		boolean deleted = datasetService.deleteDataset(currentUser, id);
-		
-		if (deleted) {
-			return ResponseEntity.ok(new ApiResponse(true, "Catalog deleted"));
-		} else {
-			return ResponseEntity.ok(new ApiResponse(false, "Current user is not owner of catalog"));
-		}
+    	try {
+			boolean deleted = datasetService.deleteDataset(currentUser, id);
+			
+			if (deleted) {
+				return ResponseEntity.ok(new APIResponse(true, "Catalog deleted"));
+			} else {
+				return ResponseEntity.ok(new APIResponse(false, "Current user is not owner of catalog"));
+			}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+	
+			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+		}					
 	}
     
 
     
     @GetMapping(value = "/get/{id}",
-	        produces = "application/json")
+	            produces = "application/json")
 	public ResponseEntity<?> getDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
 	
-		Optional<DatasetResponse> dataset = datasetService.getDataset(currentUser, id);
-		if (dataset.isPresent()) {
-			return ResponseEntity.ok(dataset.get());
-		} else {
-			return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-		}
+    	try {
+			Optional<Dataset> datasetOpt = datasetService.getDataset(currentUser, id);
+			
+			if (!datasetOpt.isPresent()) {
+				return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+			}
+			
+			Dataset dataset = datasetOpt.get();
+			
+			Template template = null;
+			if (dataset.getTemplateId() != null) {
+				template = templateRepository.findById(dataset.getTemplateId()).get();
+			}
+	
+			ThesaurusLoadStatus st = null;
+			if (dataset.getTypeUri().contains(SEMAVocabulary.ThesaurusCollection.toString())) {
+				try {
+					st = annotatorService.isLoaded(dataset);
+		    	} catch (Exception ex) {
+		    		ex.printStackTrace();
+		    		st = ThesaurusLoadStatus.UNKNOWN;
+		    	}
+			}
+	
+			return ResponseEntity.ok(modelMapper.dataset2DatasetResponse(dataset, template, st));
+    	
+    	} catch (Exception ex) {
+    		ex.printStackTrace();
+    		return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+    	}
+		
 	}   
     
     @PostMapping(value = "/insert",
@@ -229,446 +312,597 @@ public class APIDatasetController {
 	
 		boolean inserted = datasetService.insert(currentUser, id, toId);
 		if (inserted) {
-			return ResponseEntity.ok(new ApiResponse(true,"")); 
+			return ResponseEntity.ok(new APIResponse(true,"")); 
 		} else {
-			return ResponseEntity.ok(new ApiResponse(false,"Target not found"));
+			return ResponseEntity.ok(new APIResponse(false,"Target not found"));
 		}
 	}    
     
     @PostMapping(value = "/remove",
-            produces = "application/json")
+                 produces = "application/json")
 	public ResponseEntity<?> removeDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @RequestParam("id") String id, @RequestParam("fromId") String fromId)  {
 	
 		boolean inserted = datasetService.remove(currentUser, id, fromId);
 		if (inserted) {
-			return ResponseEntity.ok(new ApiResponse(true,"")); 
+			return ResponseEntity.ok(new APIResponse(true,"")); 
 		} else {
-			return ResponseEntity.ok(new ApiResponse(false,"Target not found"));
+			return ResponseEntity.ok(new APIResponse(false,"Target not found"));
 		}
 	} 
     
-//    @RequestMapping(value = "/checkMetadata/{id}")
-// 	public ResponseEntity<?> checkMetadata(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-// 		
-//		try {
-//			AsyncUtils.supplyAsync(() -> mappingsService.executeMapping(currentUser, id, instanceId.isPresent() ? instanceId.get() : null, applicationEventPublisher));
-//			
-//			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-//		} catch (Exception e) {
-//			e.printStackTrace();
-//		}
-//
-//		return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-// 	}
 
+    @PostMapping(value = "/execute-mappings/{id}")
+ 	public ResponseEntity<?> executeDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+
+		DatasetContainer dc = null;
+		try {
+//			dc = datasetService.getUnpublishedContainer(currentUser, id, null);
+			dc = datasetService.getContainer(currentUser, id);
+			
+	    	if (dc == null) {
+	    		return new ResponseEntity<>(APIResponse.FailureResponse(), HttpStatus.NOT_FOUND);
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return new ResponseEntity<>(APIResponse.FailureResponse(), HttpStatus.BAD_REQUEST);
+		}
+		
+		try {
+	    	TaskDescription tdescr = taskService.newDatasetExecuteMappingsTask(dc); 
+			
+	    	if (tdescr != null) {
+	    		taskService.call(tdescr);
+	    		return new ResponseEntity<>(APIResponse.SuccessResponse("The dataset mappings has been scheduled for execution."), HttpStatus.ACCEPTED);
+	    	} else {
+	    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+	    	}
+		} catch (TaskConflictException ex) {
+			return APIResponse.conflict(ex);		
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
+		}
+		
+ 	} 
+    
+    @PostMapping(value = "/execute-mappings-and-republish/{id}")
+ 	public ResponseEntity<?> executeRepublishDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+
+		DatasetContainer dc = null;
+		try {
+			dc = datasetService.getContainer(currentUser, id);
+			
+	    	if (dc == null) {
+	    		return APIResponse.notFound(DatasetContainer.class);
+	    	} else if (!dc.isPublished()) {
+	    		throw TaskConflictException.notPublished(dc);
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
+		}
+
+		try {
+	    	TaskDescription tdescr = taskService.newDatasetExecuteMappingsAndRepublishTask(dc);
+
+	    	if (tdescr != null) {
+				idService.remove(dc.getDataset().getIdentifier());
+
+	    		taskService.call(tdescr);
+	    		return new ResponseEntity<>(APIResponse.SuccessResponse("The dataset has been scheduled for mapping execution and republication."), HttpStatus.ACCEPTED);
+	    	} else {
+	    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+	    	}
+		} catch (TaskConflictException ex) {
+			return APIResponse.conflict(ex);		
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
+		}
+		
+ 	} 
     
     @PostMapping(value = "/publish/{id}")
 	public ResponseEntity<?> publishDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @RequestParam("triple-store") Optional<String> tripleStore, @PathVariable("id") String id, @RequestParam("visibility") String visibility)  {
-
-		try {
-//			DatasetMessage msg = datasetService.checkPublishVocabulary(currentUser, id);
-			
-//			if (msg != DatasetMessage.OK) {
-//				return ResponseEntity.ok(new ApiResponse(false,msg.toString()));
-//			} 
-
-			final String virtuoso;
-			if (tripleStore.isPresent()) {
-				virtuoso = tripleStore.get();
-			} else {
-				virtuoso = virtuosoConfigurations.keySet().iterator().next();
+    	TripleStoreConfiguration vc;
+    	
+    	try {
+	    	if (tripleStore.isPresent()) {
+	    		vc = virtuosoConfigurations.getByName(tripleStore.get());
+	    		
+		    	if (vc == null) {
+		    		return new ResponseEntity<>(APIResponse.FailureResponse("Not found."), HttpStatus.NOT_FOUND);
+		    	}
+		    	
+	    	} else {
+	    		vc = virtuosoConfigurations.values().iterator().next();
+	    	}
+	    	
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
+		}
+    	
+    	synchronized (DatasetService.syncString(id)) {
+    		DatasetContainer dc = null;
+			try {
+//				dc = datasetService.getUnpublishedContainer(currentUser, id, vc);
+				dc = datasetService.getContainer(currentUser, id);
+				
+		    	if (dc == null) {
+		    		return APIResponse.notFound(DatasetContainer.class);
+		    	} else if (dc.isPublished()) {
+		    		throw TaskConflictException.alreadyPublished(dc);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
 			}
 			
-			AsyncUtils.supplyAsync(() -> datasetService.publish(currentUser, virtuoso, id, visibility.equals("public") ? 1:0, true, true, false))
-			   .thenAccept(ok -> {
-//				   System.out.println("SUCCESS");
-				   DatasetResponse doc = datasetService.getDataset(currentUser, id).get();
-				   
-				   ObjectMapper mapper = new ObjectMapper();
-				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-				    
-				   NotificationObject no = new NotificationObject("publish", doc.getPublishState().toString(), id, null, doc.getPublishStartedAt(), doc.getPublishCompletedAt());
-							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("dataset").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-			   })
-			   .exceptionally(ex -> { 
-//				   	System.out.println("FAILURE");
-					ObjectMapper mapper = new ObjectMapper();
-					mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-				    mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-				    
-					NotificationObject no = new NotificationObject("publish", DatasetState.PUBLISHING_FAILED.toString(), id, null, null, null);
-							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("dataset").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				   
-				   ex.printStackTrace(); 
-				   return null; 
-				});			   
-			
-//			System.out.println("PUBLISHING ACCEPTED");
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-
-		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-		
-	} 
+			try {
+	   			Properties props = new Properties();
+	   			props.put(ServiceProperties.PUBLISH_MODE, visibility.equals("public") ? ServiceProperties.PUBLISH_MODE_PUBLIC : ServiceProperties.PUBLISH_MODE_PRIVATE);
+	   			props.put(ServiceProperties.PUBLISH_METADATA, true);
+	   			props.put(ServiceProperties.PUBLISH_CONTENT, true);
+	   			props.put(ServiceProperties.PUBLISH_ONLY_NEW_CONTENT, false);
+	   			props.put(ServiceProperties.TRIPLE_STORE, vc);
+	    			
+	   			TaskDescription tdescr = taskService.newDatasetPublishTask(dc, props);
+	
+		    	if (tdescr != null) {
+		   			idService.remove(dc.getDataset().getIdentifier());
+		   			taskService.call(tdescr);
+		   			
+		   			return APIResponse.acceptedToPublish(dc);
+		    	} else {
+		    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.serverError(ex);
+			}
+    	}
+	}    
     
-    @PostMapping(value = "/publishUnpublishedContent/{id}")
+    @PostMapping(value = "/publish-unpublished-content/{id}")
  	public ResponseEntity<?> publishUnpublishedContent(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser,  @PathVariable("id") String id)  {
-
- 		try {
- 			
- 			Optional<Dataset> dopt = datasetRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
- 			
- 			if (!dopt.isPresent()) {
- 				return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
- 			}
- 			
- 			Dataset dataset = dopt.get();
-
- 			PublishState ps = null;
- 			String virtuoso = null;
-
- 			for (VirtuosoConfiguration vc : virtuosoConfigurations.values()) {
- 				ps = dataset.checkPublishState(vc.getId());
- 				if (ps != null) {
- 					virtuoso = vc.getName();
- 					break;
- 				}
- 			}
- 			final String virt = virtuoso;
-
- 			AsyncUtils.supplyAsync(() -> datasetService.publish(currentUser, virt, id, -1, false, true, true))
- 			   .thenAccept(ok -> {
-// 				   System.out.println("SUCCESS");
- 				   DatasetResponse doc = datasetService.getDataset(currentUser, id).get();
- 				   
- 				   ObjectMapper mapper = new ObjectMapper();
- 				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
- 				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
- 				    
- 				   NotificationObject no = new NotificationObject("publish", doc.getPublishState().toString(), id, null, doc.getPublishStartedAt(), doc.getPublishCompletedAt());
- 							
- 					try {
- 						SseEventBuilder sse = SseEmitter.event().name("dataset").data(mapper.writeValueAsBytes(no));
- 					
- 						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
- 					} catch (JsonProcessingException e) {
- 						// TODO Auto-generated catch block
- 						e.printStackTrace();
- 					}
- 			   })
- 			   .exceptionally(ex -> { 
-// 				   	System.out.println("FAILURE");
- 					ObjectMapper mapper = new ObjectMapper();
- 					mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
- 				    mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
- 				    
- 					NotificationObject no = new NotificationObject("publish", DatasetState.PUBLISHING_FAILED.toString(), id, null, null, null);
- 							
- 					try {
- 						SseEventBuilder sse = SseEmitter.event().name("dataset").data(mapper.writeValueAsBytes(no));
- 					
- 						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
- 					} catch (JsonProcessingException e) {
- 						// TODO Auto-generated catch block
- 						e.printStackTrace();
- 					}
- 				   
- 				   ex.printStackTrace(); 
- 				   return null; 
- 				});			   
- 			
-// 			System.out.println("PUBLISHING ACCEPTED");
- 			return new ResponseEntity<>(HttpStatus.ACCEPTED);
- 		} catch (Exception e) {
- 			e.printStackTrace();
- 		}
-
- 		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
- 		
+    	
+    	synchronized (DatasetService.syncString(id)) {
+			DatasetContainer dc = null;
+			try {
+				dc = datasetService.getContainer(currentUser, id);
+				
+		    	if (dc == null) {
+		    		return APIResponse.notFound(DatasetContainer.class);
+		    	} else if (!dc.isPublished()) {
+		    		throw TaskConflictException.notPublished(dc);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
+			}
+	
+			try {
+	   			Properties props = new Properties();
+	   			props.put(ServiceProperties.PUBLISH_MODE, ServiceProperties.PUBLISH_MODE_CURRENT);
+	   			props.put(ServiceProperties.PUBLISH_METADATA, false);
+	   			props.put(ServiceProperties.PUBLISH_CONTENT, true);
+	   			props.put(ServiceProperties.PUBLISH_ONLY_NEW_CONTENT, true);
+	
+	   			TaskDescription tdescr = taskService.newDatasetPublishTask(dc, props);
+				
+		    	if (tdescr != null) {
+		   			idService.remove(dc.getDataset().getIdentifier());
+		    		taskService.call(tdescr);
+		    		
+		    		return new ResponseEntity<>(APIResponse.SuccessResponse("The dataset has been scheduled for unpublished content publication."), HttpStatus.ACCEPTED);
+		    	} else {
+		    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.serverError(ex);
+			}
+    	}
  	} 
     
-    @PostMapping(value = "/republishMetadata/{id}")
+   	@PostMapping(value = "/unpublish/{id}")
+	public ResponseEntity<?> unpublishDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+	
+   		synchronized (DatasetService.syncString(id)) {
+			DatasetContainer dc = null;
+			try {
+				dc = datasetService.getContainer(currentUser, id);
+				
+		    	if (dc == null) {
+		    		return APIResponse.notFound(DatasetContainer.class);
+		    	} else if (!dc.isPublished()) {
+		    		throw TaskConflictException.notPublished(dc);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
+			}
+			
+			try {
+	   			Properties props = new Properties();
+	   			props.put(ServiceProperties.PUBLISH_METADATA, true);
+	   			props.put(ServiceProperties.PUBLISH_CONTENT, true);
+	   			
+	   			TaskDescription tdescr = taskService.newDatasetUnpublishTask(dc, props);
+				
+		    	if (tdescr != null) {
+		   			idService.remove(dc.getDataset().getIdentifier());
+	
+		    		taskService.call(tdescr);
+		    		return new ResponseEntity<>(APIResponse.SuccessResponse("The dataset has been scheduled for unpublication."), HttpStatus.ACCEPTED);
+		    	} else {
+		    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.serverError(ex);
+			}
+   		}
+   	}
+   
+    @PostMapping(value = "/republish/{id}")
+ 	public ResponseEntity<?> republishDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+
+    	synchronized (DatasetService.syncString(id)) {
+			DatasetContainer dc = null;
+			try {
+				dc = datasetService.getContainer(currentUser, id);
+				
+		    	if (dc == null) {
+		    		return APIResponse.notFound(DatasetContainer.class);
+		    	} else if (!dc.isPublished()) {
+		    		throw TaskConflictException.notPublished(dc);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
+			}
+			
+			try {
+		    	TaskDescription tdescr = taskService.newDatasetRepublishTask(dc);
+				
+		    	if (tdescr != null) {
+	    			idService.remove(dc.getDataset().getIdentifier());
+	
+	    			taskService.call(tdescr);
+		    		return new ResponseEntity<>(APIResponse.SuccessResponse("The dataset has been scheduled for republication."), HttpStatus.ACCEPTED);
+		    	} else {
+		    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.serverError(ex);
+			}
+    	}
+ 	}  
+    
+    @PostMapping(value = "/republish-metadata/{id}")
  	public ResponseEntity<?> republishMetadata(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
 
- 		try {
-// 			DatasetMessage msg = datasetService.checkPublishVocabulary(currentUser, id);
- 			
-// 			if (msg != DatasetMessage.OK) {
-// 				return ResponseEntity.ok(new ApiResponse(false,msg.toString()));
-// 			} 
+		DatasetContainer dc = null;
+		try {
+			dc = datasetService.getContainer(currentUser, id);
+			
+	    	if (dc == null) {
+	    		return APIResponse.notFound(DatasetContainer.class);
+	    	} else if (!dc.isPublished()) {
+	    		throw TaskConflictException.notPublished(dc);
+	    	}
+		} catch (TaskConflictException ex) {
+			return APIResponse.conflict(ex);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
+		}
+		
+		try {
+   			TaskDescription tdescr = taskService.newDatasetRepublishMetadataTask(dc);
+			
+	    	if (tdescr != null) {
+    			idService.remove(dc.getDataset().getIdentifier());
 
- 			AsyncUtils.supplyAsync(() -> datasetService.republishMetadata(currentUser, id))
- 			   .thenAccept(ok -> {
-// 				   System.out.println("SUCCESS");
- 				   DatasetResponse doc = datasetService.getDataset(currentUser, id).get();
- 				   
- 				   ObjectMapper mapper = new ObjectMapper();
- 				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
- 				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
- 				    
- 				   NotificationObject no = new NotificationObject("publish", doc.getPublishState().toString(), id, null, doc.getPublishStartedAt(), doc.getPublishCompletedAt());
- 							
- 					try {
- 						SseEventBuilder sse = SseEmitter.event().name("dataset").data(mapper.writeValueAsBytes(no));
- 					
- 						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
- 					} catch (JsonProcessingException e) {
- 						// TODO Auto-generated catch block
- 						e.printStackTrace();
- 					}
- 			   })
- 			   .exceptionally(ex -> { 
-// 				   	System.out.println("FAILURE");
- 					ObjectMapper mapper = new ObjectMapper();
- 					mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
- 				    mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
- 				    
- 					NotificationObject no = new NotificationObject("publish", DatasetState.PUBLISHING_FAILED.toString(), id, null, null, null);
- 							
- 					try {
- 						SseEventBuilder sse = SseEmitter.event().name("dataset").data(mapper.writeValueAsBytes(no));
- 					
- 						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
- 					} catch (JsonProcessingException e) {
- 						// TODO Auto-generated catch block
- 						e.printStackTrace();
- 					}
- 				   
- 				   ex.printStackTrace(); 
- 				   return null; 
- 				});			   
- 			
-// 			System.out.println("PUBLISHING ACCEPTED");
- 			return new ResponseEntity<>(HttpStatus.ACCEPTED);
- 		} catch (Exception e) {
- 			e.printStackTrace();
- 		}
-
- 		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
- 		
+	    		taskService.call(tdescr);
+	    		return new ResponseEntity<>(APIResponse.SuccessResponse("The dataset has been scheduled for metadata republication."), HttpStatus.ACCEPTED);
+	    	} else {
+	    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+	    	}
+		} catch (TaskConflictException ex) {
+			return APIResponse.conflict(ex);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
+		}	
  	} 
+
+    @PostMapping(value = "/create-distribution/{id}")
+	public ResponseEntity<?> publishDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, 
+			                                @PathVariable("id") String id,
+			                                @RequestBody CreateDatasetDistributionRequest body)  {
+
+		DatasetContainer dc = null;
+		try {
+			dc = datasetService.getContainer(currentUser, id);
+			
+	    	if (dc == null) {
+	    		return APIResponse.notFound(DatasetContainer.class);
+	    	} else if (!dc.isPublished()) {
+	    		throw TaskConflictException.notPublished(dc);
+	    	}
+		} catch (TaskConflictException ex) {
+			return APIResponse.conflict(ex);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
+		}
+
+		try {
+    		Properties props = new Properties();
+   			props.put(ServiceProperties.CREATE_DISTRIBUTION_OPTIONS, body);
+
+   			TaskDescription tdescr = taskService.newDatasetCreateDistributionTask(dc, props);
+			
+	    	if (tdescr != null) {
+	    		taskService.call(tdescr);
+    			return new ResponseEntity<>(APIResponse.SuccessResponse("The dataset distribution creation has been scheduled."), HttpStatus.ACCEPTED);
+	    	} else {
+	    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+	    	}
+		} catch (TaskConflictException ex) {
+			return APIResponse.conflict(ex);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
+		}
+		
+	}    
+    
+	@PostMapping(value = "/stop-create-distribution/{id}")
+	public ResponseEntity<?> stop(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+
+		DatasetContainer dc = null;
+		try {
+			dc = datasetService.getContainer(currentUser, id);
+			
+	    	if (dc == null) {
+	    		return APIResponse.notFound(DatasetContainer.class);
+	    	} else if (!dc.isPublished()) {
+	    		throw TaskConflictException.notPublished(dc);
+	    	}
+		} catch (TaskConflictException ex) {
+			return APIResponse.conflict(ex);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
+		}
+
+		try {
+			synchronized (dc.synchronizationString(TaskType.DATASET_PUBLISH, TaskType.DATASET_UNPUBLISH, TaskType.DATASET_REPUBLISH, TaskType.DATASET_REPUBLISH_METADATA, TaskType.DATASET_CREATE_DISTRIBUTION)) {
+	    		TaskDescription td =  taskService.getActiveTask(dc, TaskType.DATASET_CREATE_DISTRIBUTION);
+	    		if (td != null) {
+	    			if (taskService.requestStop(td.getId())) {
+	    				return new ResponseEntity<>(APIResponse.SuccessResponse("The dataset distribution creation is being stopped."), HttpStatus.ACCEPTED);
+	    			} else {
+	    				return new ResponseEntity<>(APIResponse.FailureResponse("The dataset distribution creation could not be stopped."), HttpStatus.CONFLICT);
+	    			}
+	    		} else {
+	    			datasetService.failCreateDistribution(dc);
+	    			  
+	    			return new ResponseEntity<>(APIResponse.SuccessResponse("The dataset distribution creation is not being executed.", dc.asResponse()), HttpStatus.OK);
+	    		}
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
+		}	    	
+	}    
+    
+    @PostMapping(value = "/clear-distribution/{id}")
+ 	public ResponseEntity<?> clearDistribution(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+
+		DatasetContainer dc = null;
+		try {
+			dc = datasetService.getContainer(currentUser, id);
+			
+	    	if (dc == null) {
+	    		return APIResponse.notFound(DatasetContainer.class);
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
+		}
+		
+		try {
+			boolean ok = datasetService.clearDistribution(dc); // TODO: error handling
+			
+			return new ResponseEntity<>(APIResponse.SuccessResponse("The dataset distribution has been cleared."), HttpStatus.OK);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
+		}
+ 	}	
+
     
     @PostMapping(value = "/flipVisibility/{id}")
   	public ResponseEntity<?> flipVisibility(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser,  @PathVariable("id") String id)  {
 
-  		try {
-//  			DatasetMessage msg = datasetService.checkPublishVocabulary(currentUser, id);
-  			
-//  			if (msg != DatasetMessage.OK) {
-//  				return ResponseEntity.ok(new ApiResponse(false,msg.toString()));
-//  			} 
-
-  			AsyncUtils.supplyAsync(() -> datasetService.flipVisibility(currentUser, id))
-  			   .thenAccept(ok -> {
-//  				   System.out.println("SUCCESS");
-  				   DatasetResponse doc = datasetService.getDataset(currentUser, id).get();
-  				   
-  				   ObjectMapper mapper = new ObjectMapper();
-  				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-  				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-  				    
-  				   NotificationObject no = new NotificationObject("publish", doc.getPublishState().toString(), id, null, doc.getPublishStartedAt(), doc.getPublishCompletedAt());
-  							
-  					try {
-  						SseEventBuilder sse = SseEmitter.event().name("dataset").data(mapper.writeValueAsBytes(no));
-  					
-  						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-  					} catch (JsonProcessingException e) {
-  						// TODO Auto-generated catch block
-  						e.printStackTrace();
-  					}
-  			   })
-  			   .exceptionally(ex -> { 
-//  				   	System.out.println("FAILURE");
-  					ObjectMapper mapper = new ObjectMapper();
-  					mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-  				    mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-  				    
-  					NotificationObject no = new NotificationObject("publish", DatasetState.PUBLISHING_FAILED.toString(), id, null, null, null);
-  							
-  					try {
-  						SseEventBuilder sse = SseEmitter.event().name("dataset").data(mapper.writeValueAsBytes(no));
-  					
-  						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-  					} catch (JsonProcessingException e) {
-  						// TODO Auto-generated catch block
-  						e.printStackTrace();
-  					}
-  				   
-  				   ex.printStackTrace(); 
-  				   return null; 
-  				});			   
-  			
-//  			System.out.println("PUBLISHING ACCEPTED");
-  			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-  		} catch (Exception e) {
-  			e.printStackTrace();
-  		}
-
-  		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-  		
-  	}     
-    
-    @PostMapping(value = "/unpublish/{id}")
-	public ResponseEntity<?> unpublishDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-		
-		try {
-			AsyncUtils.supplyAsync(() -> datasetService.unpublish(currentUser, id, true, true))
-			   .exceptionally(ex -> { ex.printStackTrace(); return false; })
-			   .thenAccept(ok -> {
-				   ObjectMapper mapper = new ObjectMapper();
-				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-				    
-				   NotificationObject no = new NotificationObject("publish", DatasetState.UNPUBLISHED.toString(), id, null, null, null);
-							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("dataset").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-			   });
-			
-//			System.out.println("UNPUBLISHING ACCEPTED");
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
+		DatasetContainer dc = datasetService.getContainer(currentUser, id);
+		if (dc == null) {
+			return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
 		}
-	
-		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
 		
-    } 
+		idService.remove(dc.getDataset().getIdentifier());
+		
+	   	TaskDescription tdescr = taskService.newDatasetFlipVisibilityTask(dc);
+	   	taskService.call(tdescr);
+  		   	
+		return new ResponseEntity<>(HttpStatus.ACCEPTED);
+  	}  
     
     @PostMapping(value = "/index/{id}")
-	public ResponseEntity<?> indexDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-		
-		try {
-			AsyncUtils.supplyAsync(() -> datasetService.indexDataset(currentUser, id))
-			   .exceptionally(ex -> { 
-//				   	System.out.println("FAILURE");
-					ObjectMapper mapper = new ObjectMapper();
-					mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-				    mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-				    
-					NotificationObject no = new NotificationObject("index", IndexingState.INDEXING_FAILED.toString(), id, null, null, null);
-							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("dataset").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				   
-				   ex.printStackTrace(); 
-				   return false; 
-				})
-			   .thenAccept(ok -> {
-				   DatasetResponse doc = datasetService.getDataset(currentUser, id).get();
-				   
-				   ObjectMapper mapper = new ObjectMapper();
-				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-				    
-				   NotificationObject no = new NotificationObject("index", IndexingState.INDEXED.toString(), id, null, doc.getPublishStartedAt(), doc.getPublishCompletedAt());
-							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("dataset").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-			   });
-			
-//			System.out.println("PUBLISHING ACCEPTED");
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+	public ResponseEntity<?> indexDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id, @RequestBody CreateIndexRequest icr)  {
+    	
+   		if (elasticConfigurations.isEmpty()) {
+       		return APIResponse.methodNotAllowed();
+       	}
+    	
+    	synchronized (DatasetService.syncString(id.toHexString())) {
+    		DatasetContainer dc = null;
+    		IndexStructure isc = null;
+    		
+			try {
+				dc = datasetService.getContainer(currentUser, new SimpleObjectIdentifier(id));
+				
+		    	if (dc == null) {
+		    		return APIResponse.notFound(DatasetContainer.class);
+		    	} else if (dc.isIndexed()) {
+		    		throw TaskConflictException.alreadyIndexed(dc);
+		    	} else if (!dc.isPublished()) {
+		    		throw TaskConflictException.notPublished(dc);
+		    	}
+		    	
+		    	if (icr.getIndexId() != null) {
+		    		Optional<IndexStructure> iscOpt = indexStructureRepository.findById(icr.getIndexId());
+		    		
+		    		if (!iscOpt.isPresent()) {
+		    			return new ResponseEntity<>(APIResponse.FailureResponse("The index was not found."), HttpStatus.NOT_FOUND);
+		    		}
+		    		
+		    		isc = iscOpt.get();
+		    	} else {
+		        	ElasticConfiguration ec;
 
-		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+			    	if (icr.getIndexEngine() != null) {
+			    		ec = elasticConfigurations.getByName(icr.getIndexEngine());
+			    		
+				    	if (ec == null) {
+				    		return APIResponse.badRequest();
+				    	}
+
+			    	} else {
+			    		ec = elasticConfigurations.values().iterator().next();
+			    	}
+			    	
+		    		isc = indexService.createIndex(currentUser, icr.getIndexIdentifier(), ec, icr.getIndexStructures(), icr.getKeysMetadata());
+		    		
+		    		if (isc == null) {
+		    			throw new TaskConflictException("An index with the same name already exists");
+		    		}
+		    	}
+		    	
+		    	
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
+			}
+			
+			try {
+	   			Properties props = new Properties();
+	   			props.put(ServiceProperties.INDEX_STRUCTURE, isc);
+	   			
+	   			TaskDescription tdescr = taskService.newDatasetIndexTask(dc, props);
+	
+		    	if (tdescr != null) {
+		   			taskService.call(tdescr);
+		   			
+		   			return APIResponse.acceptedToIndex(dc);
+		    	} else {
+		    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.serverError(ex);
+			}
+    	}
+    	
+    	
+//    	
+//	   	TaskDescription tdescr = taskService.newDatasetIndexTask(currentUser.getId(), id);
+//
+//	   	try {
+//		   	ListenableFuture<Date> task = datasetService.indexDataset(tdescr, currentUser, id, indexId, wsService);
+//		   	taskService.setTask(tdescr, task);
+//	   	} catch (TaskFailureException ex) {
+//	   		ex.printStackTrace();
+//	   	}
+//	   	
+//		return new ResponseEntity<>(HttpStatus.ACCEPTED);
 	}     
     
     @PostMapping(value = "/unindex/{id}")
 	public ResponseEntity<?> unindexDataset(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-		
-		try {
-			AsyncUtils.supplyAsync(() -> datasetService.unindexDataset(currentUser, id))
-			   .exceptionally(ex -> { ex.printStackTrace(); return false; })
-			   .thenAccept(ok -> {
-				   ObjectMapper mapper = new ObjectMapper();
-				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-				    
-				   NotificationObject no = new NotificationObject("index", IndexingState.NOT_INDEXED.toString(), id, null, null, null);
-							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("dataset").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-			   });
-			
-//			System.out.println("UNPUBLISHING ACCEPTED");
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-	
-		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-		
-    } 
 
-    @GetMapping(value = "/triple-stores",
-	        produces = "application/json")
-	public ResponseEntity<?> getDatabases(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser)  {
-    	ObjectMapper mapper = new ObjectMapper();
-    	ArrayNode array = mapper.createArrayNode();
-    	
-    	List<String> vcNames = virtuosoConfigurations.values().stream().map(vc -> vc.getName()).collect(Collectors.toList());
-    	Collections.sort(vcNames);
-    	
-    	for (String name : vcNames) {
-    		array.add(name);
+   		if (elasticConfigurations.isEmpty()) {
+       		return APIResponse.methodNotAllowed();
+       	}
+   		
+    	synchronized (DatasetService.syncString(id)) {
+    		DatasetContainer dc = null;
+			try {
+				dc = datasetService.getContainer(currentUser, id);
+				
+		    	if (dc == null) {
+		    		return APIResponse.notFound(DatasetContainer.class);
+		    	} else if (!dc.isIndexed()) {
+		    		throw TaskConflictException.notIndexed(dc);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
+			}
+			
+			try {
+	   			TaskDescription tdescr = taskService.newDatasetUnindexTask(dc);
+	
+		    	if (tdescr != null) {
+		   			taskService.call(tdescr);
+		   			
+		   			return APIResponse.acceptedToUnindex(dc);
+		    	} else {
+		    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.serverError(ex);
+			}
     	}
-    	
-		return ResponseEntity.ok(array);
-	}       
+    } 
 
     @GetMapping(value = "/schema/{id}")
     public ResponseEntity<?> schema(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam(defaultValue = "ttl", name = "format") String format)  {
 
-		Optional<DatasetResponse> dataset = datasetService.getDataset(currentUser, id);
+		Optional<Dataset> dataset = datasetService.getDataset(currentUser, id);
 		if (dataset.isPresent()) {
-			Model model = schemaService.readSchema(SEMAVocabulary.getDataset(dataset.get().getUuid()).toString());
+			Model model = schemaService.readSchema(resourceVocabulary.getDatasetAsResource(dataset.get().getUuid()).toString());
 			Writer sw = new StringWriter();
 			model.write(sw, format) ;
 
@@ -676,6 +910,61 @@ public class APIDatasetController {
 		} else {
 			return new ResponseEntity<>(HttpStatus.NOT_FOUND);
 		}
+    }
+    
+    @GetMapping(value = "/schema-classes/{id}")
+    public ResponseEntity<?> schemaClasses(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam(required = false, defaultValue = "false") boolean embedders)  {
+
+    	try {
+			Optional<Dataset> datasetOpt = datasetService.getDataset(currentUser, id);
+			if (!datasetOpt.isPresent()) {
+				return APIResponse.notFound(DatasetContainer.class);
+			}
+			
+			Dataset dataset = datasetOpt.get();
+			
+			List<ClassStructure> tcs = schemaService.readTopClasses(dataset);
+			
+			List<ClassStructureResponse> cs = new ArrayList<>();
+			for (ClassStructure css : tcs) {
+				ClassStructureResponse csr = ClassStructureResponse.createFrom(css);
+				
+				if (embedders) {
+					for (EmbedderDocument edoc : embedderRepository.findByDatasetUuidAndOnClass(dataset.getUuid(), csr.getClazz())) {
+						csr.addEmbedder(edoc.getId().toString(), edoc.getEmbedder());
+					}
+				}
+				
+				cs.add(csr);
+
+			}
+				
+			return ResponseEntity.ok(cs);
+		
+    	} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
+		}
 
     }
+    
+    
+    @GetMapping(value = "/exists-dataset",
+            produces = "application/json")
+	public ResponseEntity<?> checkDatasetIdentifier(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @Parameter(required = true)  @RequestParam("identifier") String identifier)  {
+		
+    	if (identifier.equals(database.getName())) {
+    		return ResponseEntity.ok("{ \"exists\" : true } ");
+    	}
+    	
+    	Optional<Dataset> datasetOpt = datasetRepository.findByIdentifierAndDatabaseId(identifier, database.getId());
+		if (datasetOpt.isPresent()) {
+			return ResponseEntity.ok("{ \"exists\" : true } ");
+		} else {
+			return ResponseEntity.ok("{ \"exists\" : false } ");
+		}
+	}
+    
+    
+    
 }

@@ -1,5 +1,7 @@
 package ac.software.semantic.model;
 
+import ac.software.semantic.model.constants.ResourceOptionType;
+
 public class ResourceOption {
 	
 	private ResourceOptionType type;

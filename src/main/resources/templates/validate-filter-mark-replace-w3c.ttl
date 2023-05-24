@@ -11,13 +11,13 @@
 @prefix op:  <http://islab.ntua.gr/ns/d2rml-op#> .
 @prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
 
-@prefix collection:    <http://sw.islab.ntua.gr/semaspace/resource/annotation/> .
+@prefix collection: <{##ppRESOURCE_PREFIX##}>
 
 <#SPARQLService>
    a is:SPARQLService ;
    is:uri "{@@iirdfsource@@}" .
    
-<#EnrichMapping>  
+<#ValidateMapping>  
    a  <http://islab.ntua.gr/ns/d2rml#PrimaryTriplesMap> ;
    rr:logicalTable [ 
       dr:source <#SPARQLService> ;
@@ -27,6 +27,7 @@
          is:name "iisparql" ;
       ] );
    ] ;
+   
    rr:subjectMap [ 
       dr:definedColumns ( [
          dr:name "UUID" ;
@@ -35,40 +36,34 @@
       rr:template  "{@collection}{UUID}" ;
       rr:class oa:Annotation ;
    ] ;   
-   rr:predicateObjectMap [ 
-      rr:predicate  rdf:type ;
-	  rr:objectMap [
-         rr:column "type" ;
-      ] ;
-   ] ;
-   rr:predicateObjectMap [ 
-      rr:predicate  oa:hasBody ;
-	  rr:objectMap [
-         rr:constant "{@@newValue@@}" ;
-         rr:termType rr:IRI ;
-      ] ;
-   ] ;
+   
    rr:predicateObjectMap [ 
       rr:predicate dcterms:created ;
       rr:objectMap [
-         rr:column "created";
+         dr:definedColumns ( [
+            dr:name "TIME" ;
+            dr:function op:currentTime; 
+         ] );          
+         rr:column "TIME";
+         rr:datatype xsd:dateTime ;
          rr:termType rr:Literal ;
-      ] ;
-   ] ;
+      ]
+   ] ;   
+   
+#   rr:predicateObjectMap [ 
+#      rr:predicate  rdf:type ;
+#	  rr:objectMap [
+#         rr:column "type" ;
+#      ] ;
+#   ] ;
+   
    rr:predicateObjectMap [ 
       rr:predicate  <http://sw.islab.ntua.gr/annotation/score> ;
 	  rr:objectMap [
-         rr:column "score";
-         rr:termType rr:Literal ;
+         rr:constant "{@@iiconfidence@@}";
+         rr:datatype xsd:double ;
       ] ;
    ] ;      
-   rr:predicateObjectMap [ 
-      rr:predicate as:generator ;
-      rr:objectMap [
-         rr:constant "{@@iiannotator@@}" ; 
-         rr:termType rr:IRI ;
-      ] ;
-   ] ;
    rr:predicateObjectMap [ 
       rr:predicate oa:hasTarget ;
       rr:objectMap  [ 
@@ -98,14 +93,14 @@
 			  ] ;
 		   ] ;
 		   rr:predicateObjectMap [
-		      rr:predicate <http://sw.islab.ntua.gr/annotation/start> ;
+		      rr:predicate oa:start ;
 			  rr:objectMap [
 			     rr:column "start" ;
 			     rr:termType rr:Literal ;
 			  ] ;
 		   ] ;
 		   rr:predicateObjectMap [
-		      rr:predicate <http://sw.islab.ntua.gr/annotation/end> ;
+		      rr:predicate oa:end ;
 			  rr:objectMap [
 			     rr:column "end" ;
 			     rr:termType rr:Literal ;
@@ -114,6 +109,15 @@
 		];
 	 ] ;
    ] ;
+   
+   rr:predicateObjectMap [ 
+      rr:predicate  oa:hasBody ;
+	  rr:objectMap [
+         rr:constant "{@@newValue@@}" ;
+         rr:termType rr:IRI ;
+      ] ;
+   ] ;
+   
    rr:predicateObjectMap [ 
       rr:predicate  <http://sw.islab.ntua.gr/annotation/hasValidation> ;
       rr:objectMap [
@@ -130,8 +134,18 @@
 	         ] ;
 	         rr:predicateObjectMap [ 
 	            rr:predicate <http://sw.islab.ntua.gr/annotation/action> ;
-	            rr:object <http://sw.islab.ntua.gr/annotation/Add> ; 
+                rr:objectMap [
+	               rr:constant "{@@action@@}" ; 
+	               rr:termType rr:IRI ;
+	            ] ;
 	         ] ;
+	         rr:predicateObjectMap [ 
+	            rr:predicate oa:hasScope ;
+	            rr:objectMap [
+	               rr:column "SCOPE" ; 
+	               rr:termType rr:IRI ;
+	            ] ;
+	         ] ;				 
              rr:predicateObjectMap [ 
                 rr:predicate  dcterms:replaces ;
 	            rr:objectMap [
@@ -140,6 +154,14 @@
              ] ;	         
 	      ] ;
 	   ] ;
-   ] .
+   ] ;
+
+   rr:predicateObjectMap [ 
+      rr:predicate as:generator ;
+      rr:objectMap [
+         rr:constant "{@@iiannotator@@}" ; 
+         rr:termType rr:IRI ;
+      ] ;
+   ] .    
    
 

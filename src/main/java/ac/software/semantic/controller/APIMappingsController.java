@@ -1,12 +1,6 @@
 package ac.software.semantic.controller;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 
 import io.swagger.v3.oas.annotations.Parameter;
@@ -17,9 +11,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -33,23 +24,37 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import ac.software.semantic.config.ConfigurationContainer;
+import ac.software.semantic.controller.utils.APIUtils;
+import ac.software.semantic.controller.utils.AsyncUtils;
+import ac.software.semantic.model.Dataset;
 import ac.software.semantic.model.FileSystemConfiguration;
 import ac.software.semantic.model.MappingDocument;
 import ac.software.semantic.model.MappingInstance;
 import ac.software.semantic.model.ParameterBinding;
-import ac.software.semantic.model.VirtuosoConfiguration;
-import ac.software.semantic.payload.ApiResponse;
+import ac.software.semantic.model.ProcessStateContainer;
+import ac.software.semantic.model.TaskDescription;
+import ac.software.semantic.model.TripleStoreConfiguration;
+import ac.software.semantic.model.constants.MappingType;
+import ac.software.semantic.model.constants.TaskType;
+import ac.software.semantic.payload.APIResponse;
 import ac.software.semantic.payload.MappingResponse;
 import ac.software.semantic.payload.MappingUpdateRequest;
+import ac.software.semantic.repository.DatasetRepository;
 import ac.software.semantic.repository.MappingRepository;
 import ac.software.semantic.security.CurrentUser;
 import ac.software.semantic.security.UserPrincipal;
+import ac.software.semantic.service.FolderService;
+import ac.software.semantic.service.MappingObjectIdentifier;
 import ac.software.semantic.service.MappingsService;
+import ac.software.semantic.service.MappingsService.MappingContainer;
 import ac.software.semantic.service.ModelMapper;
-
+import ac.software.semantic.service.SimpleObjectIdentifier;
+import ac.software.semantic.service.TaskService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 @Tag(name = "Mappings API")
@@ -58,10 +63,13 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 public class APIMappingsController {
 
 	Logger logger = LoggerFactory.getLogger(APIMappingsController.class);
-	
+
+	@Autowired
+	private DatasetRepository datasetRepository;
+
 	@Autowired
 	private MappingRepository mappingsRepository;
-
+	
     @Autowired
  	private MappingsService mappingsService;
 
@@ -76,15 +84,21 @@ public class APIMappingsController {
     private FileSystemConfiguration fileSystemConfiguration;
 	
     @Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfigurations;
-    
-    @Autowired
-    private ApplicationEventPublisher applicationEventPublisher;
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
     
 	@Autowired
-	private ModelMapper modelMapper;
+	FolderService folderService;
 
+	@Autowired
+	private ModelMapper modelMapper;
+	
+	@Autowired
+	private TaskService taskService;
+
+	@Autowired
+	private APIUtils apiUtils;
+	
     @GetMapping("/getAll")
 	public List<MappingResponse> getAll(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @RequestParam("datasetId") String datasetId)  {
 
@@ -94,73 +108,58 @@ public class APIMappingsController {
     @GetMapping("/get/{id}")
  	public ResponseEntity<?> get(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
 
-    	Optional<MappingResponse> res = mappingsService.getMapping(currentUser, id);
-    	if (res.isPresent()) {
-    		return ResponseEntity.ok(res); 
-    	} else {
-    		return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-    	}
+    	try {
+	    	MappingContainer mc = mappingsService.getContainer(currentUser, id);
+	    	
+	    	if (mc == null) {
+	    		return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+	    	} else {
+	    		return ResponseEntity.ok(mc.asResponse());
+	    	}
+	    	
+    	} catch (Exception ex) {
+			ex.printStackTrace();
+			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+    	}   
+    	
+ 	}
+    
+    @GetMapping("/get-d2rml/{id}")
+ 	public ResponseEntity<?> getD2RML(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+
+    	Optional<MappingDocument> dopt = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
+    	
+		if (!dopt.isPresent()) {
+			return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+		}
+		
+   		return ResponseEntity.ok(dopt.get().getFileContents()); 
  	}
 	
     @DeleteMapping("/delete/{id}")
     public ResponseEntity<?> deleteMapping(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
 
-    	boolean deleted = mappingsService.deleteMapping(currentUser, id);
-		
-    	if (deleted) {
-    		return ResponseEntity.ok(new ApiResponse(true, "Resource deleted"));
-    	} else {
-    		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-    	}
+    	try {
+	    	boolean deleted = mappingsService.deleteMapping(currentUser, id);
+			
+	    	if (deleted) {
+	    		return ResponseEntity.ok(new APIResponse(true, "Resource deleted"));
+	    	} else {
+	    		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+	
+			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+		}		    	
 	}
-    
-//    @PostMapping("/create")
-//	public ResponseEntity<?> createMapping(@CurrentUser UserPrincipal currentUser, 
-//			                               @RequestParam("name") String name, 
-//			                               @RequestParam("datasetId") String datasetId,
-//			                               @RequestParam("type") String type,
-//			                               @RequestParam("parameters") Optional<String> parameters)  {
-//
-//    	
-//    	List<String> params = new ArrayList<>();
-//    	if (parameters.isPresent()) {
-//    		for (String p : parameters.get().split(",")) {
-//    			params.add(p);
-//    		}
-//    	}
-//    	
-//    	MappingResponse res = mappingsService.create(currentUser, name, type, datasetId, params);
-//	    		
-//   		return ResponseEntity.ok(res);
-//
-//	}
-    
-//    @PostMapping("/create")
-//	public ResponseEntity<?> createMapping(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser,
-//			                               @RequestParam("datasetId") String datasetId,
-//			                               @RequestParam("type") String type,
-//			                               @RequestBody MappingUpdateRequest mur)  {
-//
-//    	
-//    	MappingResponse res = mappingsService.create(currentUser, datasetId, type, mur.getName(), mur.getD2rml(), mur.getParameters());
-//	    		
-//   		return ResponseEntity.ok(res);
-//
-//	}    
-    
-    private void saveUploadedFile(UserPrincipal currentUser, MappingDocument doc, MultipartFile file) throws IllegalStateException, IOException {
-		File folder = new File(fileSystemConfiguration.getUserDataFolder(currentUser) + uploadsFolder);
-
-		File newFile = new File(folder, doc.getUuid() + ".ttl");
-		file.transferTo(newFile);
-    }    
     
     @PostMapping(value = "/create")
 	public ResponseEntity<?> createMapping(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser,
 			                               @RequestParam("datasetId") String datasetId,
-			                               @RequestParam("type") String type,
+			                               @RequestParam("type") MappingType type,
 			                               @RequestPart("body") String body,
-			                               @RequestPart("file") MultipartFile file)  {
+			                               @RequestPart("file") Optional<MultipartFile> file)  {
     	
 
 		try {    	
@@ -169,11 +168,32 @@ public class APIMappingsController {
 	        //read json file and convert to customer object
 			MappingUpdateRequest mur = objectMapper.readValue(body, MappingUpdateRequest.class);
 
-	        
-			MappingDocument doc = mappingsService.create(currentUser, datasetId, type, mur.getName(), mur.getD2rml(), mur.getParameters(), file.getOriginalFilename());
-			saveUploadedFile(currentUser, doc, file);
+			MappingDocument doc;
+			if (file.isPresent()) {
+				doc = mappingsService.create(currentUser, datasetId, type, mur.getName(), mur.getParameters(), file.get().getOriginalFilename(), new String(file.get().getBytes()));
+			} else {
+				doc = mappingsService.create(currentUser, datasetId, type, mur.getName(), mur.getParameters(), mur.getTemplateId());
+			}
+			
+//			folderService.saveMappingD2RMLFile(currentUser, doc, file);
     	
-			return ResponseEntity.ok(modelMapper.mapping2MappingResponse(virtuosoConfigurations.values(), doc, currentUser));
+			Optional<Dataset> datasetOpt = datasetRepository.findByIdAndUserId(doc.getDatasetId(), new ObjectId(currentUser.getId()));
+
+			if (!datasetOpt.isPresent()) {
+				return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+			}
+			
+			Dataset dataset = datasetOpt.get();
+			
+			ProcessStateContainer psv = dataset.getCurrentPublishState(virtuosoConfigurations.values());
+			final TripleStoreConfiguration vc;
+			if (psv != null) {
+				vc = psv.getTripleStoreConfiguration();
+			} else {
+				vc = null;
+			}
+			
+			return ResponseEntity.ok(modelMapper.mapping2MappingResponse(vc, doc, currentUser));
 		} catch (Exception ex) {
 			ex.printStackTrace();
 	
@@ -192,17 +212,17 @@ public class APIMappingsController {
 
 			MappingUpdateRequest mur = objectMapper.readValue(body, MappingUpdateRequest.class);
 
-	    	boolean updated = mappingsService.updateMapping(currentUser, id, mur.getName(), mur.getD2rml(), mur.getParameters(), file.isPresent() ? file.get().getOriginalFilename() : null);
-			if (file != null) {
-				
-				Optional<MappingDocument> entry = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
-	
-				if (entry.isPresent() && file.isPresent()) {
-					saveUploadedFile(currentUser, entry.get(), file.get());
-				}
-			}
+	    	mappingsService.updateMapping(currentUser, id, mur.getName(), mur.getParameters(), file.isPresent() ? file.get().getOriginalFilename() : null, file.isPresent() ? new String(file.get().getBytes()) : null);
 			
-			return ResponseEntity.ok(new ApiResponse(true, "Document updated"));
+//	    	if (file != null) {
+//				Optional<MappingDocument> entry = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
+//	
+//				if (entry.isPresent() && file.isPresent()) {
+//					folderService.saveMappingD2RMLFile(currentUser, entry.get(), file.get());
+//				}
+//			}
+			
+			return ResponseEntity.ok(new APIResponse(true, "Document updated"));
 			
 		} catch (Exception ex) {
 			ex.printStackTrace();
@@ -211,168 +231,201 @@ public class APIMappingsController {
 		}		
 	}
     
-    @PostMapping("/createParameterBinding/{id}")
-	public ResponseEntity<?> createParameterBinding(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestBody List<ParameterBinding> bindings)  {
+    @PostMapping("/create-instance/{id}")
+	public ResponseEntity<?> createInstance(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestBody List<ParameterBinding> bindings)  {
 
-    	MappingInstance mi = mappingsService.createParameterBinding(currentUser, id, bindings);
-		
-    	return ResponseEntity.ok(modelMapper.mappingInstance2MappingInstanceResponse(virtuosoConfigurations.values(), mi));
-	}    
-
-    @PostMapping(value = "/upload-file/{id}",
-    		     consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-	public ResponseEntity<?> uploadFile(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam MultipartFile file)  {
-
-		try {
-			Optional<MappingDocument> doc = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
-    	
-//			doc.
-			if (doc.isPresent()) {
-				MappingDocument mdoc = doc.get();
-				
-				String folder = fileSystemConfiguration.getUserDataFolder(currentUser) + uploadsFolder + mdoc.getUuid();
-				File f = new File(folder);
-				if (!f.exists()) {
-					logger.info("Creating folder " + f);
-					f.mkdir();
-				}
-
-				logger.info("Saving " + folder + "/" + file.getOriginalFilename() + " (size: " + file.getSize() + ")");
-				file.transferTo(new File(folder + "/" + file.getOriginalFilename()));
-			}
+    	try {
+	    	MappingContainer mc = mappingsService.getContainer(currentUser, id);
+	    	
+	    	if (mc == null) {
+	    		return APIResponse.notFound(MappingContainer.class);
+	    	}
+	    	
+	    	MappingInstance mi = mappingsService.createParameterBinding(mc, bindings);
 			
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
+	    	TripleStoreConfiguration vc = mc.getDatasetTripleStoreVirtuosoConfiguration();
+	    	
+	    	return ResponseEntity.ok(modelMapper.mappingInstance2MappingInstanceResponse(vc, mi));
     	} catch (Exception ex) {
-    		ex.printStackTrace();
-    		return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
     	}
-    	
-	}
+	}    
     
-//    @RequestMapping(value = "/getUploadedFiles/{id}")
-//	public ResponseEntity<?> getuploadFiles(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-//	
-//		try {
-//			List<String> res = new ArrayList<>();
-//			
-//			File f = new File(fileSystemConfiguration.getUserDataFolder(currentUser) + uploadsFolder + id);
-//			if (f.exists()) {
-//				for (File ff : f.listFiles()) {
-//					res.add(ff.getName());
-//				}
-//			}
-//			
-//			return ResponseEntity.ok(res);
-//
-//		} catch (Exception ex) {
-//			ex.printStackTrace();
-//			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-//		}
-//		
-//	}
-		
-    @GetMapping(value = "/execute/{id}")
- 	public ResponseEntity<?> execute(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam("instanceId") Optional<String> instanceId)  {
- 		
+    @PostMapping("/update-instance/{id}")
+	public ResponseEntity<?> updateInstance(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam("instanceId") String instanceId, @RequestBody List<ParameterBinding> bindings)  {
+
+    	try {
+	    	MappingContainer mc = mappingsService.getContainer(currentUser, id, instanceId);
+	    	
+	    	if (mc == null) {
+	    		return APIResponse.notFound(MappingContainer.class);
+	    	}
+	    	
+	    	MappingInstance mi = mappingsService.updateParameterBinding(mc, bindings);
+	    	
+			TripleStoreConfiguration vc = mc.getDatasetTripleStoreVirtuosoConfiguration();
+	
+	    	return ResponseEntity.ok(modelMapper.mappingInstance2MappingInstanceResponse(vc, mi));
+    	} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
+    	}    
+    }
+    
+
+    @DeleteMapping(value = "/delete-instance/{id}")
+	public ResponseEntity<?> deleteInstance(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam("instanceId") String instanceId)  {
+
 		try {
-			AsyncUtils.supplyAsync(() -> mappingsService.executeMapping(currentUser, id, instanceId.isPresent() ? instanceId.get() : null, applicationEventPublisher));
+	    	MappingContainer mc = mappingsService.getContainer(currentUser, id, instanceId);
+	    	
+	    	if (mc == null) {
+	    		return APIResponse.notFound(MappingContainer.class);
+	    	}
+
+			boolean ok = mappingsService.deleteParameterBinding(mc);
+			return new ResponseEntity<>(APIResponse.SuccessResponse("Mapping instance deleted."), HttpStatus.OK);
 			
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
 		}
+    }	
 
-		return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
- 	}	
+    
+    @PostMapping(value = "/upload-attachment/{id}",
+    		     consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	public ResponseEntity<?> uploadAttachment(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam("instanceId") Optional<String> instanceId, @RequestParam MultipartFile file)  {
 
-    @GetMapping(value = "/clear-execution/{id}")
- 	public ResponseEntity<?> clearExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam("instanceId") Optional<String> instanceId)  {
- 		
 		try {
-			boolean ok = mappingsService.clearExecution(currentUser, id, instanceId.isPresent() ? instanceId.get() : null);
+			Optional<MappingDocument> docOpt = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
+
+			if (docOpt.isPresent()) {
+				MappingDocument doc = docOpt.get();
+				
+				if (!instanceId.isPresent()) {
+					String fileName = folderService.saveAttachment(currentUser, doc, file);
+					
+					doc.addDataFile(fileName);
+				} else {
+					MappingInstance mi = doc.getInstance(new ObjectId(instanceId.get()));
+					
+					String fileName = folderService.saveAttachment(currentUser, doc, mi, file);
+					
+					mi.addDataFile(fileName);
+				}
+				
+				mappingsRepository.save(doc);
+			}
 			
 			return new ResponseEntity<>(HttpStatus.OK);
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
+    	} catch (Exception ex) {
+    		ex.printStackTrace();
+    		return APIResponse.serverError(ex);
+    	}
+	}
+    
+    @DeleteMapping("/delete-attachment/{id}")
+    public ResponseEntity<?> deleteAttachment(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam("instanceId") Optional<String> instanceId, @RequestParam String filename)  {
 
-		return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
- 	}	
-     
-     @GetMapping(value = "/download/{id}",
-                     produces = "text/plain")
-	public ResponseEntity<?> downloadMapping(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-		
-//    	 System.out.println("TTT " + currentUser);
 		try {
-			String ttl = mappingsService.downloadMapping(currentUser, id);
-//			System.out.println(ttl);
-			if (ttl != null) {
-				return ResponseEntity.ok(ttl);
-			} else {
-				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+			Optional<MappingDocument> docOpt = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
+
+			if (docOpt.isPresent()) {
+				MappingDocument doc = docOpt.get();
+				
+				if (!instanceId.isPresent()) {
+					folderService.deleteAttachment(currentUser, doc, filename);
+
+					doc.removeDataFile(filename);
+				} else {
+					MappingInstance mi = doc.getInstance(new ObjectId(instanceId.get()));
+
+					folderService.deleteAttachment(currentUser, doc, mi, filename);
+					
+					mi.removeDataFile(filename);
+				}
+					
+				mappingsRepository.save(doc);
 			}
-		} catch (Exception e) {
-			e.printStackTrace();
-			return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-		}
-
-	}	 
-     
-     @GetMapping(value = "/lastExecution/{id}",
-                     produces = "text/plain")
-	public ResponseEntity<?> lastExecution(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam("instanceId") Optional<String> instanceId)  {
-		
-		try {
-			String iid = instanceId.isPresent() ? instanceId.get() : null;
 			
-			Optional<String> ttl = mappingsService.getLastExecution(currentUser, id, iid);
-			if (ttl.isPresent()) {
-				return ResponseEntity.ok(ttl.get());
-			} else {
-				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+			return new ResponseEntity<>(HttpStatus.OK);
+    	} catch (Exception ex) {
+    		ex.printStackTrace();
+    		return APIResponse.serverError(ex);
+    	}
+	}
+    
+	@PostMapping(value = "/stop/{id}")
+	public ResponseEntity<?> stop(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam("instanceId") Optional<String> instanceId)  {
+
+		MappingContainer mc = null;
+		try {
+			mc = mappingsService.getContainer(currentUser, id, instanceId.orElse(null));
+	    	if (mc == null) {
+	    		return APIResponse.notFound(MappingContainer.class);
+	    	}
+		} catch (Exception ex) {
+			return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
 		}
-
-	}	  
+    	
+		try {
+			synchronized (mc.synchronizationString(TaskType.MAPPING_EXECUTE)) {
+	    		TaskDescription td =  taskService.getActiveTask(mc, TaskType.MAPPING_EXECUTE);
+	    		if (td != null) {
+	    			if (taskService.requestStop(td.getId())) {
+	    				return new ResponseEntity<>(APIResponse.SuccessResponse("The mapping is being stopped."), HttpStatus.ACCEPTED);
+	    			} else {
+	    				return new ResponseEntity<>(APIResponse.FailureResponse("The mapping could not be stopped."), HttpStatus.CONFLICT);
+	    			}
+	    		} else {
+	    			MappingDocument mdoc = mappingsService.failExecution(mc);
+	    			  
+	    			return new ResponseEntity<>(APIResponse.SuccessResponse("The mapping is not being executed.", 
+	    					mdoc != null ? modelMapper.mapping2MappingResponse(mc.getDatasetTripleStoreVirtuosoConfiguration(), mdoc, currentUser) : null),
+	    					HttpStatus.OK);
+	    		}
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
+		}	    	
+	}
+	
+	@PostMapping(value = "/execute/{id}")
+	public ResponseEntity<?> execute(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id, @RequestParam("instanceId") Optional<ObjectId> instanceId)  {
+		return apiUtils.execute(currentUser, new MappingObjectIdentifier(id, instanceId.orElse(null)), mappingsService);
+	}
+    
+    @PostMapping(value = "/clear-execution/{id}")
+    public ResponseEntity<?> clearExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id, @RequestParam("instanceId") Optional<ObjectId> instanceId)  {
+    	return apiUtils.clearExecution(currentUser, new MappingObjectIdentifier(id, instanceId.orElse(null)), mappingsService);
+ 	}		
      
-     @GetMapping(value = "/downloadLastExecution/{id}")
- 	public ResponseEntity<?> downloadLastExecution(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam("instanceId") Optional<String> instanceId)  {
- 	
- 		try {
- 			String iid = instanceId.isPresent() ? instanceId.get() : null;
- 			
- 			Optional<String> zip = mappingsService.downloadLastExecution(currentUser, id, iid);
- 			
- 			if (zip.isPresent()) {
- 				String file = zip.get();
- 				Path path = Paths.get(file);
- 				File ffile = new File(file);
- 		      	
- 			    ByteArrayResource resource = new ByteArrayResource(Files.readAllBytes(path));
+    @GetMapping(value = "/preview-last-execution/{id}",
+                produces = "text/plain")    
+	public ResponseEntity<?> previewLastExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id, @RequestParam("instanceId") Optional<ObjectId> instanceId)  {
+		return apiUtils.previewLastExecution(currentUser, new MappingObjectIdentifier(id, instanceId.orElse(null)), mappingsService);
+	}	
 
- 			    HttpHeaders headers = new HttpHeaders();
- 			    headers.add(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, HttpHeaders.CONTENT_DISPOSITION);
- 			    headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + ffile.getName());
- 			    		
- 			    return ResponseEntity.ok()
- 			            .headers(headers)
- 			            .contentLength(ffile.length())
- 			            .contentType(MediaType.APPLICATION_OCTET_STREAM)
- 			            .body(resource);
-
- 			} else {
- 				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
- 			}
- 		} catch (Exception e) {
- 			e.printStackTrace();
- 			return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
- 		}
- 	}    
+    @GetMapping(value = "/preview-published-execution/{id}",
+            produces = "text/plain")    
+	public ResponseEntity<?> previewPublishedExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id, @RequestParam("instanceId") Optional<ObjectId> instanceId)  {
+		return apiUtils.previewPublishedExecution(currentUser, new MappingObjectIdentifier(id, instanceId.orElse(null)), mappingsService);
+	}	
      
+    @GetMapping(value = "/download-last-execution/{id}")
+ 	public ResponseEntity<StreamingResponseBody> downloadLastExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id, @RequestParam("instanceId") Optional<ObjectId> instanceId)  {
+     	return apiUtils.downloadLastExecution(currentUser, new MappingObjectIdentifier(id, instanceId.orElse(null)), mappingsService);
+ 	} 
+
+    @GetMapping(value = "/download-published-execution/{id}")
+ 	public ResponseEntity<StreamingResponseBody> downloadPublishedExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id, @RequestParam("instanceId") Optional<ObjectId> instanceId)  {
+     	return apiUtils.downloadPublishedExecution(currentUser, new MappingObjectIdentifier(id, instanceId.orElse(null)), mappingsService);
+ 	} 
+     
+    // Experimental
     @PostMapping(value = "/unpublish/{id}")
   	public ResponseEntity<?> unpublish(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam("instanceId") Optional<String> instanceId)  {
   		
@@ -388,18 +441,6 @@ public class APIMappingsController {
   	}	
      
      
-     @DeleteMapping(value = "/deleteParameterBinding/{id}",
-             produces = "text/plain")
-	public ResponseEntity<?> deleteParameterBinding(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam("instanceId") String instanceId)  {
-	
-		try {
-			boolean deleted = mappingsService.deleteParameterBinding(currentUser, id, instanceId);
-			return new ResponseEntity<>(HttpStatus.OK);
-		} catch (Exception e) {
-			e.printStackTrace();
-			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-		}
-     }	
 
 
 }

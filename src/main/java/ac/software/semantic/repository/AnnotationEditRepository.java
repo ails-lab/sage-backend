@@ -10,9 +10,9 @@ import org.springframework.data.mongodb.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import ac.software.semantic.model.AnnotationEdit;
-import ac.software.semantic.model.AnnotationEditType;
 import ac.software.semantic.model.AnnotatorDocument;
 import ac.software.semantic.model.MappingDocument;
+import ac.software.semantic.model.constants.AnnotationEditType;
 
 @Repository
 public interface AnnotationEditRepository extends MongoRepository<AnnotationEdit, String> {
@@ -49,11 +49,11 @@ public interface AnnotationEditRepository extends MongoRepository<AnnotationEdit
    @Query(value = "{ 'annotationEditGroupId' : ?0, 'onValue.iri' : ?1, 'addedByUserId': { '$exists': 'true', '$not': {'$size': 0} }  }")
    List<AnnotationEdit> findByAnnotationEditGroupIdAndIriValueAndAdded(ObjectId aegId, String iri);
 
-   @Query(value = "{ 'annotationEditGroupId' : ?0, 'userId' : ?1, 'onValue.iri' : ?2, 'annotationValue' : ?3, 'editType' : ?4 }")
-   List<AnnotationEdit> findByAnnotationEditGroupIdAndUserIdAndIriValueAndAnnotationValueAndEditType(ObjectId aegId, ObjectId userId, String iri, String annotationValue, AnnotationEditType type);
+//   @Query(value = "{ 'annotationEditGroupId' : ?0, 'userId' : ?1, 'onValue.iri' : ?2, 'annotationValue' : ?3, 'editType' : ?4 }")
+//   List<AnnotationEdit> findByAnnotationEditGroupIdAndUserIdAndIriValueAndAnnotationValueAndEditType(ObjectId aegId, ObjectId userId, String iri, String annotationValue, AnnotationEditType type);
 
-   @Query(value = "{ 'annotationEditGroupId' : ?0, 'userId' : ?1, 'onValue.lexicalForm' : ?2, 'onValue.language' : ?3, 'onValue.datatype' : ?4, 'annotationValue' : ?5, 'editType' : ?6 }")
-   List<AnnotationEdit> findByAnnotationEditGroupIdAndUserIdAndLiteralValueAndAnnotationValueAndEditType(ObjectId aegId, ObjectId userId, String lexicalForm, String language, String datatype, String annotationValue, AnnotationEditType type);
+//   @Query(value = "{ 'annotationEditGroupId' : ?0, 'userId' : ?1, 'onValue.lexicalForm' : ?2, 'onValue.language' : ?3, 'onValue.datatype' : ?4, 'annotationValue' : ?5, 'editType' : ?6 }")
+//   List<AnnotationEdit> findByAnnotationEditGroupIdAndUserIdAndLiteralValueAndAnnotationValueAndEditType(ObjectId aegId, ObjectId userId, String lexicalForm, String language, String datatype, String annotationValue, AnnotationEditType type);
    
    List<AnnotationEdit> findByDatasetUuidAndOnPropertyAndAsPropertyAndEditTypeAndUserId(String datasetUuid, List<String> onProperty, String asProperty, AnnotationEditType editType, ObjectId userId);
    
@@ -61,6 +61,7 @@ public interface AnnotationEditRepository extends MongoRepository<AnnotationEdit
 
    void deleteByDatasetUuidAndOnPropertyAndAsPropertyAndUserId(String datasetUuid, List<String> onProperty, String asProperty, ObjectId userId);
 
+   List<AnnotationEdit> findByStartAndEnd(int start, int end);
    
    Optional<AnnotationEdit> findById(ObjectId Id);
    
@@ -68,7 +69,15 @@ public interface AnnotationEditRepository extends MongoRepository<AnnotationEdit
 
    List<AnnotationEdit> findByPagedAnnotationValidationId(ObjectId pavId);
    
+   @Query(value = "{ 'datasetUuid': { $in: ?1 }, 'acceptedByUserId' : ?0 }", count = true)
+   Long countAcceptedByUserIdAndDatasetsUuid(ObjectId userId, List<String> datasetUUid);
+
+   @Query(value = "{ 'datasetUuid': { $in: ?1 }, 'rejectedByUserId' : ?0 }", count = true)
+   Long countRejectedByUserIdAndDatasetsUuid(ObjectId userId, List<String> datasetUUid);
    
+   @Query(value = "{ 'datasetUuid': { $in: ?1 }, 'addedByUserId' : ?0 }", count = true)
+   Long countAddedByUserIdAndDatasetsUuid(ObjectId userId, List<String> datasetUUid);
+
 //   List<AnnotationEdit> findByPagedAnnotationValidationIdAndAnnotationEditGroupId(ObjectId pavId, ObjectId aegId);
 //   List<AnnotatorDocument> findByDatasetIdAndOnPropertyAndUserId(ObjectId datasetId, String onProperty, ObjectId userId);
 

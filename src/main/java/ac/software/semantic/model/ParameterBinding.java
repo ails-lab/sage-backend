@@ -2,8 +2,8 @@ package ac.software.semantic.model;
 
 public class ParameterBinding {
 
-	private String name;
-	private String value;
+	protected String name;
+	protected String value;
 	
 	public ParameterBinding() { }
 	
@@ -26,5 +26,9 @@ public class ParameterBinding {
 
 	public void setValue(String value) {
 		this.value = value;
+	}
+	
+	public String toString() {
+		return name + "=" + value;
 	}
 }

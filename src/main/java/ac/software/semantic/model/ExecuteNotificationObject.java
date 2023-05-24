@@ -1,107 +1,68 @@
 package ac.software.semantic.model;
 
-import java.util.Date;
+import java.util.ArrayList;
 import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.constants.NotificationType;
+import ac.software.semantic.model.state.MappingState;
+import ac.software.semantic.payload.NotificationObject;
+import ac.software.semantic.service.ObjectContainer;
+import ac.software.semantic.service.AnnotatorService.AnnotatorContainer;
+import ac.software.semantic.service.EmbedderService.EmbedderContainer;
+import ac.software.semantic.service.ExecutableContainer;
+import ac.software.semantic.service.MappingsService.MappingContainer;
+import ac.software.semantic.service.PagedAnnotationValidationService.PagedAnnotationValidationContainer;
 
-public class ExecuteNotificationObject {
-
-	private String type = "execute";
-	private List<ExecutionInfo> maps;
-	private String id;
-	private String instanceId;
-	private MappingState state;
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class ExecuteNotificationObject extends NotificationObject {
 	
-	private int count;
+	private List<ExecutionInfo> d2rmlExecution;
 	
-//	private String subtype = "EXECUTION_START";
+	public ExecuteNotificationObject(MappingState state, String id) {
+		super(NotificationType.execute, state.toString(), id);
+	}
+
+	public ExecuteNotificationObject(MappingState state, String id, String instanceId) {
+		super(NotificationType.execute, state.toString(), id, instanceId);
+	}
 	
-	@JsonInclude(JsonInclude.Include.NON_NULL)
-	private Date startedAt;
-	
-	
-	public ExecuteNotificationObject(String id, String instanceId, List<ExecutionInfo> maps, Date startedAt) {
-		this.state = MappingState.EXECUTING;
-		this.id = id;
-		this.instanceId = instanceId;
-		this.maps = maps;
-		this.startedAt = startedAt;
-		this.count = -1;
-	}
-
-
-	public String getType() {
-		return type;
-	}
-
-	public void setType(String type) {
-		this.type = type;
-	}
-
-	public String getId() {
-		return id;
-	}
-
-	public void setId(String id) {
-		this.id = id;
-	}
-
-	public String getInstanceId() {
-		return instanceId;
-	}
-
-	public void setInstanceId(String instanceId) {
-		this.instanceId = instanceId;
-	}
-
-	public MappingState getState() {
-		return state;
-	}
-
-	public void setState(MappingState state) {
-		this.state = state;
-	}
-
-
-	public List<ExecutionInfo> getMaps() {
-		return maps;
-	}
-
-
-	public void setMaps(List<ExecutionInfo> maps) {
-		this.maps = maps;
-	}
-
-
-//	public String getSubtype() {
-//		return subtype;
+//	public ExecuteNotificationObject(MappingState state, MappingContainer mc) {
+//		super(NotificationType.execute, state.toString(), mc);
 //	}
 //
+//	public ExecuteNotificationObject(MappingState state, AnnotatorContainer ac) {
+//		super(NotificationType.execute, state.toString(), ac);
+//	}
 //
-//	public void setSubtype(String subtype) {
-//		this.subtype = subtype;
+//	public ExecuteNotificationObject(MappingState state, EmbedderContainer ec) {
+//		super(NotificationType.execute, state.toString(), ec);
 //	}
 
-
-	public Date getStartedAt() {
-		return startedAt;
+	public ExecuteNotificationObject(ExecutableContainer ec) {
+		super(NotificationType.execute, ec.getExecuteState() != null ? ec.getExecuteState().getExecuteState().toString() : MappingState.NOT_EXECUTED.toString(), ec);
+	}
+	
+	public ExecuteNotificationObject(MappingState state, ExecutableContainer ec) {
+		super(NotificationType.execute, state.toString(), ec);
+	}
+	
+	public List<ExecutionInfo> getD2rmlExecution() {
+		return d2rmlExecution;
 	}
 
-
-	public void setStartedAt(Date startedAt) {
-		this.startedAt = startedAt;
+	public void setD2rmlExecution(List<ExecutionInfo> maps) {
+		this.d2rmlExecution = maps;
 	}
 
-
-	public int getCount() {
-		return count;
+	public void addMap(ExecutionInfo map) {
+		if (d2rmlExecution == null) {
+			d2rmlExecution = new ArrayList<>();
+		}
+		d2rmlExecution.add(map);
 	}
 
-
-	public void setCount(int count) {
-		this.count = count;
-	}
 
 }

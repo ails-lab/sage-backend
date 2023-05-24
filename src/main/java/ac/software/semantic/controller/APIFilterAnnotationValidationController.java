@@ -1,14 +1,13 @@
 package ac.software.semantic.controller;
 
-import java.util.Map;
-import java.util.Optional;
+import java.util.Arrays;
+import java.util.List;
 
 import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,170 +15,164 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.util.StdDateFormat;
-
-import ac.software.semantic.model.Dataset;
-import ac.software.semantic.model.DatasetState;
+import ac.software.semantic.config.ConfigurationContainer;
+import ac.software.semantic.controller.utils.APIUtils;
 import ac.software.semantic.model.FilterAnnotationValidation;
-import ac.software.semantic.model.NotificationObject;
-import ac.software.semantic.model.PublishState;
-import ac.software.semantic.model.VirtuosoConfiguration;
+import ac.software.semantic.model.TripleStoreConfiguration;
+import ac.software.semantic.model.constants.TaskType;
+import ac.software.semantic.payload.APIResponse;
 import ac.software.semantic.payload.FilterValidationUpdateRequest;
-import ac.software.semantic.repository.DatasetRepository;
-import ac.software.semantic.repository.FilterAnnotationValidationRepository;
 import ac.software.semantic.security.CurrentUser;
 import ac.software.semantic.security.UserPrincipal;
 import ac.software.semantic.service.FilterAnnotationValidationService;
-import ac.software.semantic.service.ModelMapper;
+import ac.software.semantic.service.SimpleObjectIdentifier;
+import ac.software.semantic.service.FilterAnnotationValidationService.FilterAnnotationValidationContainer;
+import ac.software.semantic.service.TaskConflictException;
+import ac.software.semantic.service.TaskService;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 @Tag(name = "Filter Annotation Validation API")
 @RestController
 @RequestMapping("/api/filter-annotation-validation")
-public class APIFilterAnnotationValidationController {
-
-	@Autowired
-	private ModelMapper modelMapper;
-	
-    @Autowired
-    private ApplicationEventPublisher applicationEventPublisher;
+public class APIFilterAnnotationValidationController  {
 
     @Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfigurations;
-    
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
+
 	@Autowired
 	private FilterAnnotationValidationService favService;
 
+    @Autowired
+	private TaskService taskService;
+	
 	@Autowired
-	private DatasetRepository datasetRepository;
+	private APIUtils apiUtils;
 
-	@Autowired
-	private FilterAnnotationValidationRepository favRepository;
-	
-	
 	@PostMapping(value = "/create", produces = "application/json")
 	public ResponseEntity<?> create(@CurrentUser UserPrincipal currentUser, @RequestParam("aegId") String aegId, @RequestBody FilterValidationUpdateRequest fur) {
 
-		FilterAnnotationValidation fav = favService.create(currentUser, aegId, fur.getName(), fur.getFilters());
+		try {
+			FilterAnnotationValidation fav = favService.create(currentUser, aegId, fur.getName(), fur.getFilters());
+			FilterAnnotationValidationContainer favc = favService.getContainer(currentUser, fav);
+			
+			return APIResponse.created(favc);
 		
-		return ResponseEntity.ok(modelMapper.filterAnnotationValidation2FilterAnnotationValidationResponse(virtuosoConfigurations.values(), fav));
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
+		}
 	}
 
 	@PostMapping(value = "/update/{id}", produces = "application/json")
-	public ResponseEntity<?> update(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestBody FilterValidationUpdateRequest fur) {
+	public ResponseEntity<?> update(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id, @RequestBody FilterValidationUpdateRequest fur) {
 
-		FilterAnnotationValidation fav = favService.update(currentUser, id, fur.getName(), fur.getFilters());
+		FilterAnnotationValidationContainer favc = null;
+		try {
+			favc = favService.getContainer(currentUser, new SimpleObjectIdentifier(id));
+	    	if (favc == null) {
+	    		return APIResponse.notFound(FilterAnnotationValidationContainer.class);
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.badRequest();
+		}
 		
-		return ResponseEntity.ok(modelMapper.filterAnnotationValidation2FilterAnnotationValidationResponse(virtuosoConfigurations.values(), fav));
-	}
-	
-	@PostMapping(value = "/execute/{id}")
-	public ResponseEntity<?> execute(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-
 		try {
-			AsyncUtils.supplyAsync(() -> favService.executeNoDelete(currentUser, id, applicationEventPublisher));
+			favService.update(favc, fur.getName(), fur.getFilters());
 			
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
+			return APIResponse.updated(favc);
 			
-			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
 		}
 	}
 	
-	@GetMapping(value = "/lastExecution/{id}",  produces = "text/plain")
-	public ResponseEntity<?> lastExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-	
-		try {
-			Optional<String> ttl = favService.getLastExecution(currentUser, id);
-			if (ttl.isPresent()) {
-				return ResponseEntity.ok(ttl.get());
-			} else {
-				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+	@DeleteMapping(value = "/delete/{id}",
+			produces = "application/json")
+	public ResponseEntity<?> delete(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id) {
+		
+		SimpleObjectIdentifier objId = new SimpleObjectIdentifier(id);
+		
+		synchronized (FilterAnnotationValidationService.syncString(objId.toHexString())) {
+			FilterAnnotationValidationContainer favc = null;
+			try {
+				favc = favService.getContainer(currentUser, objId);
+		    	if (favc == null) {
+		    		return APIResponse.notFound(FilterAnnotationValidationContainer.class);
+		    	} else if (favc.isPublished()) {
+		    		throw TaskConflictException.isPublished(favc);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.badRequest();
 			}
-		} catch (Exception e) {
-			e.printStackTrace();
-			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+			
+			try {
+				
+				List<TaskType> ct  = Arrays.asList(new TaskType[] { TaskType.FILTER_ANNOTATION_VALIDATION_PUBLISH, TaskType.FILTER_ANNOTATION_VALIDATION_UNPUBLISH, TaskType.FILTER_ANNOTATION_VALIDATION_EXECUTE } );
+				
+		    	synchronized (favc.synchronizationString(ct)) {
+		    		taskService.checkIfActiveFilterAnnotationValidationTask(favc, null, ct);
+		    		
+		    		favc.delete(); // what if this fails ?
+		    
+		    		return APIResponse.deleted(favc);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.serverError(ex);
+			}	   			
 		}
 	}
+
+	@PostMapping(value = "/execute/{id}")
+	public ResponseEntity<APIResponse> execute(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+		return apiUtils.execute(currentUser, new SimpleObjectIdentifier(id), favService);	
+	}
+	
+    @PostMapping(value = "/clear-execution/{id}")
+ 	public ResponseEntity<APIResponse> clearExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+    	return apiUtils.clearExecution(currentUser, new SimpleObjectIdentifier(id), favService);
+ 	}	
 	
 	@PostMapping(value = "/publish/{id}")
-	public ResponseEntity<?> publish(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-		
-		try {
-			AsyncUtils.supplyAsync(() -> favService.republishNoDelete(currentUser, id))
-			   .exceptionally(ex -> { ex.printStackTrace(); return false; })
-			   .thenAccept(ok -> {
-				   FilterAnnotationValidation doc = favRepository.findById(new ObjectId(id)).get();
-				   
-				   Dataset ds = datasetRepository.findByUuid(doc.getDatasetUuid()).get();
-				   VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
-
-				   PublishState ps = doc.getPublishState(vc.getDatabaseId());
-				   
-				   ObjectMapper mapper = new ObjectMapper();
-				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-				    
-				   NotificationObject no = new NotificationObject("publish", DatasetState.PUBLISHED_PUBLIC.toString(), id, null, ps.getPublishStartedAt(), ps.getPublishCompletedAt());
-							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("filter-annotation-validation").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-			   });
-			
-//				System.out.println("PUBLISHING ACCEPTED");
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
-			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-		}
-	}
+	public ResponseEntity<APIResponse> publish(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+		return apiUtils.publish(currentUser, new SimpleObjectIdentifier(id), favService);
+	}    
 	
 	@PostMapping(value = "/unpublish/{id}")
-	public ResponseEntity<?> unpublish(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-		
-		try {
-			AsyncUtils.supplyAsync(() -> favService.unpublishNoDelete(currentUser, id))
-			   .exceptionally(ex -> { ex.printStackTrace(); return false; })
-			   .thenAccept(ok -> {
-//				   FilterAnnotationValidation doc = favRepository.findById(new ObjectId(id)).get();
-				   
-				   ObjectMapper mapper = new ObjectMapper();
-				   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-				   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-				    
-				   NotificationObject no = new NotificationObject("publish", DatasetState.UNPUBLISHED.toString(), id, null, null, null);
-							
-					try {
-						SseEventBuilder sse = SseEmitter.event().name("filter-annotation-validation").data(mapper.writeValueAsBytes(no));
-					
-						applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-					} catch (JsonProcessingException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-			   });
-			
-//				System.out.println("PUBLISHING ACCEPTED");
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
-			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-		}
+	public ResponseEntity<APIResponse> unpublish(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+		return apiUtils.unpublish(currentUser, new SimpleObjectIdentifier(id), favService);
+	}     
+    
+	@GetMapping(value = "/preview-last-execution/{id}", 
+			    produces = "text/plain")
+	public ResponseEntity<?> previewLastExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+		return apiUtils.previewLastExecution(currentUser, new SimpleObjectIdentifier(id), favService);
+	}	
+	
+    @GetMapping(value = "/preview-published-execution/{id}", 
+    		    produces = "text/plain")
+	public ResponseEntity<?> previewPublishedExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+    	return apiUtils.previewPublishedExecution(currentUser, new SimpleObjectIdentifier(id), favService);
+    }
+	
+    @GetMapping(value = "/download-last-execution/{id}")
+	public ResponseEntity<StreamingResponseBody> downloadLastExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+    	return apiUtils.downloadLastExecution(currentUser, new SimpleObjectIdentifier(id), favService);
+	}
+    
+    @GetMapping(value = "/download-published-execution/{id}")
+	public ResponseEntity<StreamingResponseBody> downloadPublishedExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+    	return apiUtils.downloadPublishedExecution(currentUser, new SimpleObjectIdentifier(id), favService);
 	}
 
 }

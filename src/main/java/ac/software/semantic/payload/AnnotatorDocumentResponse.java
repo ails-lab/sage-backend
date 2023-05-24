@@ -3,20 +3,24 @@ package ac.software.semantic.payload;
 import java.util.Date;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import ac.software.semantic.model.DataServiceParameterValue;
-import ac.software.semantic.model.DatasetState;
-import ac.software.semantic.model.MappingState;
+import ac.software.semantic.model.ExecutionInfo;
+import ac.software.semantic.model.NotificationMessage;
+import ac.software.semantic.model.PathElement;
 import ac.software.semantic.model.PreprocessInstruction;
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.state.MappingState;
 
-
-public class AnnotatorDocumentResponse {
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class AnnotatorDocumentResponse implements Response {
    
    private String id;
    private String uuid;
 
-   private List<String> onProperty;
+   private List<PathElement> onProperty;
    private String asProperty;
    private String annotator;
    
@@ -27,18 +31,14 @@ public class AnnotatorDocumentResponse {
    private MappingState executeState;
    private DatasetState publishState;
    
-   private int count;
+   private List<NotificationMessage> executeMessages;
+   private List<ExecutionInfo> d2rmlExecution;
+
+   private Integer count;
    
-   @JsonInclude(JsonInclude.Include.NON_NULL)
    private Date executeStartedAt;
-   
-   @JsonInclude(JsonInclude.Include.NON_NULL)
    private Date executeCompletedAt;
-   
-   @JsonInclude(JsonInclude.Include.NON_NULL)   
    private Date publishStartedAt;
-   
-   @JsonInclude(JsonInclude.Include.NON_NULL)
    private Date publishCompletedAt;
    
    private List<DataServiceParameterValue> parameters;
@@ -46,6 +46,15 @@ public class AnnotatorDocumentResponse {
    private List<PreprocessInstruction> preprocess;
    
    private AnnotationEditGroupResponse editGroup;
+   
+   @JsonIgnore
+   private boolean legacy;
+   
+   private boolean publishedFromCurrentFileSystem;
+   private boolean newExecution;
+   
+   @JsonInclude(JsonInclude.Include.NON_NULL)
+   private PrefixizedUri defaultTarget;
 
    public AnnotatorDocumentResponse() {
 	   executeState = MappingState.NOT_EXECUTED;
@@ -92,11 +101,11 @@ public class AnnotatorDocumentResponse {
 		this.asProperty = asProperty;
 	}
 
-	public List<String> getOnProperty() {
+	public List<PathElement> getOnProperty() {
 		return onProperty;
 	}
 
-	public void setOnProperty(List<String> onProperty) {
+	public void setOnProperty(List<PathElement> onProperty) {
 		this.onProperty = onProperty;
 	}
 
@@ -176,11 +185,11 @@ public class AnnotatorDocumentResponse {
 		this.preprocess = preprocess;
 	}
 
-	public int getCount() {
+	public Integer getCount() {
 		return count;
 	}
 
-	public void setCount(int count) {
+	public void setCount(Integer count) {
 		this.count = count;
 	}
 
@@ -190,6 +199,54 @@ public class AnnotatorDocumentResponse {
 
 	public void setVariant(String variant) {
 		this.variant = variant;
+	}
+
+	public PrefixizedUri getDefaultTarget() {
+		return defaultTarget;
+	}
+
+	public void setDefaultTarget(PrefixizedUri defaultTarget) {
+		this.defaultTarget = defaultTarget;
+	}
+
+	public List<NotificationMessage> getExecuteMessages() {
+		return executeMessages;
+	}
+
+	public void setExecuteMessages(List<NotificationMessage> messages) {
+		this.executeMessages = messages;
+	}
+
+	public boolean isPublishedFromCurrentFileSystem() {
+		return publishedFromCurrentFileSystem;
+	}
+
+	public void setPublishedFromCurrentFileSystem(boolean publishedFromCurrentFileSystem) {
+		this.publishedFromCurrentFileSystem = publishedFromCurrentFileSystem;
+	}
+
+	public boolean isNewExecution() {
+		return newExecution;
+	}
+
+	public void setNewExecution(boolean newExecution) {
+		this.newExecution = newExecution;
+	}
+
+	public boolean isLegacy() {
+		return legacy;
+	}
+
+	public void setLegacy(boolean legacy) {
+		this.legacy = legacy;
+	}
+
+	public List<ExecutionInfo> getD2rmlExecution() {
+		return d2rmlExecution;
+	}
+
+	public void setD2rmlExecution(List<ExecutionInfo> d2rmlExecution) {
+		this.d2rmlExecution = d2rmlExecution;
 	}
 
 //	public String getExecuteUuid() {

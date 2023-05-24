@@ -1,19 +1,10 @@
 package ac.software.semantic.service;
 
 import java.io.File;
-import java.io.FileOutputStream;
 import java.io.InputStream;
-import java.io.OutputStreamWriter;
-import java.io.StringReader;
-import java.io.StringWriter;
-import java.io.Writer;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.DirectoryStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
@@ -26,14 +17,12 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import ac.software.semantic.config.ConfigurationContainer;
 import ac.software.semantic.controller.APIPagedAnnotationValidationController;
-import ac.software.semantic.controller.ExecuteMonitor;
-import ac.software.semantic.controller.SSEController;
+import ac.software.semantic.controller.WebSocketService;
 import ac.software.semantic.controller.APIPagedAnnotationValidationController.PageRequestMode;
-import ac.software.semantic.payload.*;
+
 import org.apache.jena.graph.NodeFactory;
-import org.apache.jena.query.Dataset;
-import org.apache.jena.query.DatasetFactory;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.QueryFactory;
@@ -41,85 +30,109 @@ import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.query.Syntax;
 import org.apache.jena.rdf.model.Literal;
-import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.RDFNode;
-import org.apache.jena.rdf.model.Resource;
-import org.apache.jena.riot.RDFDataMgr;
-import org.apache.jena.riot.RDFFormat;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.ResourceLoader;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.AsyncResult;
 import org.springframework.stereotype.Service;
 import org.springframework.util.FileCopyUtils;
+import org.springframework.util.concurrent.ListenableFuture;
 
 import ac.software.semantic.controller.APIAnnotationEditGroupController.AnnotationValidationRequest;
 import ac.software.semantic.model.AnnotationEdit;
-import ac.software.semantic.model.AnnotationEditFilter;
 import ac.software.semantic.model.AnnotationEditGroup;
-import ac.software.semantic.model.AnnotationEditType;
 import ac.software.semantic.model.AnnotationEditValue;
-import ac.software.semantic.model.DatasetState;
+import ac.software.semantic.model.AnnotationValidation;
+import ac.software.semantic.model.AnnotatorDocument;
+import ac.software.semantic.model.Database;
+import ac.software.semantic.model.Dataset;
+import ac.software.semantic.model.DatasetCatalog;
+import ac.software.semantic.model.ExecuteDocument;
 import ac.software.semantic.model.ExecuteNotificationObject;
-import ac.software.semantic.model.ExecuteState;
-import ac.software.semantic.model.ExecutionInfo;
 import ac.software.semantic.model.FileSystemConfiguration;
 import ac.software.semantic.model.FilterAnnotationValidation;
-import ac.software.semantic.model.FilterValidationType;
-import ac.software.semantic.model.MappingState;
-import ac.software.semantic.model.NotificationObject;
+import ac.software.semantic.model.MappingDocument;
+import ac.software.semantic.model.MappingExecutePublishDocument;
+import ac.software.semantic.model.PagedValidationOption;
 import ac.software.semantic.model.PagedAnnotationValidation;
 import ac.software.semantic.model.PagedAnnotationValidationPage;
-import ac.software.semantic.model.PublishState;
-import ac.software.semantic.model.VirtuosoConfiguration;
+import ac.software.semantic.model.PathElement;
+import ac.software.semantic.model.ProcessStateContainer;
+import ac.software.semantic.model.TaskDescription;
+import ac.software.semantic.model.TripleStoreConfiguration;
+import ac.software.semantic.model.VocabularyContainer;
+import ac.software.semantic.model.constants.AnnotationEditType;
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.constants.NotificationChannel;
+import ac.software.semantic.model.constants.NotificationType;
+import ac.software.semantic.model.constants.SortingType;
+import ac.software.semantic.model.constants.TaskType;
+import ac.software.semantic.model.state.MappingExecuteState;
+import ac.software.semantic.model.state.MappingPublishState;
+import ac.software.semantic.model.state.MappingState;
+import ac.software.semantic.model.state.PagedAnnotationValidationState;
+import ac.software.semantic.model.state.PublishState;
+import ac.software.semantic.payload.DatasetProgressResponse;
+import ac.software.semantic.payload.LifecycleNotificationObject;
+import ac.software.semantic.payload.NotificationObject;
 import ac.software.semantic.payload.PagedAnnotationValidatationDataResponse;
+import ac.software.semantic.payload.PagedAnnotationValidationResponse;
+import ac.software.semantic.payload.ProgressResponse;
+import ac.software.semantic.payload.UpdateLockedPageResponse;
 import ac.software.semantic.payload.ValueAnnotation;
 import ac.software.semantic.payload.ValueAnnotationDetail;
+import ac.software.semantic.payload.ValueAnnotationReference;
 import ac.software.semantic.repository.AnnotationEditGroupRepository;
 import ac.software.semantic.repository.AnnotationEditRepository;
 import ac.software.semantic.repository.AnnotatorDocumentRepository;
 import ac.software.semantic.repository.DatasetRepository;
-import ac.software.semantic.repository.FilterAnnotationValidationRepository;
+import ac.software.semantic.repository.PagedAnnotationValidationPageLocksRepository;
 import ac.software.semantic.repository.PagedAnnotationValidationRepository;
-import ac.software.semantic.repository.PagedAnnotationValidationRepositoryPage;
+import ac.software.semantic.repository.PagedAnnotationValidationPageRepository;
 import ac.software.semantic.security.UserPrincipal;
+import ac.software.semantic.service.FilterAnnotationValidationService.FilterAnnotationValidationContainer;
+import ac.software.semantic.service.MappingsService.MappingContainer;
+import ac.software.semantic.service.PagedAnnotationValidationService.PagedAnnotationValidationContainer;
 import edu.ntua.isci.ac.d2rml.model.D2RMLModel;
 import edu.ntua.isci.ac.d2rml.model.Utils;
-import edu.ntua.isci.ac.d2rml.monitor.FileSystemOutputHandler;
+import edu.ntua.isci.ac.d2rml.output.FileSystemRDFOutputHandler;
 import edu.ntua.isci.ac.d2rml.processor.Executor;
-import edu.ntua.isci.ac.lod.vocabularies.ASVocabulary;
 import edu.ntua.isci.ac.lod.vocabularies.DCTVocabulary;
 import edu.ntua.isci.ac.lod.vocabularies.OAVocabulary;
 import edu.ntua.isci.ac.lod.vocabularies.OWLTime;
-import edu.ntua.isci.ac.lod.vocabularies.sema.SEMAVocabulary;
-import edu.ntua.isci.ac.lod.vocabularies.sema.SOAVocabulary;
+import ac.software.semantic.vocs.LegacyVocabulary;
+import ac.software.semantic.vocs.SEMRVocabulary;
+import ac.software.semantic.vocs.SOAVocabulary;
 
 import static ac.software.semantic.controller.APIAnnotationEditGroupController.AnnotationValidationRequest.ANNOTATED_ONLY;
 import static ac.software.semantic.controller.APIAnnotationEditGroupController.AnnotationValidationRequest.UNANNOTATED_ONLY;
 
 @Service
-public class PagedAnnotationValidationService {
+public class PagedAnnotationValidationService implements ExecutingPublishingService {
 
-	Logger logger = LoggerFactory.getLogger(PagedAnnotationValidationService.class);
+	private Logger logger = LoggerFactory.getLogger(PagedAnnotationValidationService.class);
 
+    @Autowired
+    @Qualifier("database")
+    private Database database;
+    
 	@Value("${annotation.validation.paged.page-size}")
 	private int pageSize;
 			
 	@Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfigurations;
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
 
     @Autowired
     @Qualifier("filesystem-configuration")
     private FileSystemConfiguration fileSystemConfiguration;
-
-    @Value("${annotation.manual.folder}")
-    private String annotationsFolder;
 
 	@Value("${d2rml.execute.shard-size}")
 	private int shardSize;
@@ -127,230 +140,505 @@ public class PagedAnnotationValidationService {
 	@Value("${d2rml.execute.safe}")
 	private boolean safeExecute;
 	
+	@Value("${dataservice.definition.folder}")
+	private String dataserviceFolder;
+	
+	@Autowired
+	private SEMRVocabulary resourceVocabulary;
+	
+	@Autowired
+	private LegacyVocabulary legacyVocabulary;
+
+	@Autowired
+	private VocabularyService vocabularyService;
+
+	@Autowired
+	private SchemaService schemaService;
+
 	@Autowired
 	private Environment env;
 
 	@Autowired
-	AnnotatorDocumentRepository annotatorDocumentRepository;
+	private AnnotatorDocumentRepository annotatorDocumentRepository;
 
     @Autowired
-	AnnotationEditGroupRepository aegRepository;
+    private AnnotationEditGroupRepository aegRepository;
+
+    @Autowired
+    private AnnotationEditGroupService aegService;
+    
+	@Autowired
+	private PagedAnnotationValidationRepository pavRepository;
+
+	@Autowired
+	private PagedAnnotationValidationPageRepository pavpRepository;
+
+	@Autowired
+	private PagedAnnotationValidationPageLocksRepository pavplRepository;
+
+	@Autowired
+	private AnnotationEditRepository annotationEditRepository;
+
+	@Autowired
+	private DatasetRepository datasetRepository;
+
+	@Autowired
+	private PagedAnnotationValidationPageLocksService locksService;
+
+	@Autowired
+	private TripleStore tripleStore;
 	
 	@Autowired
-	PagedAnnotationValidationRepository pavRepository;
-
-	@Autowired
-	PagedAnnotationValidationRepositoryPage pavpRepository;
+	private ResourceLoader resourceLoader;
+	
+    @Autowired
+	private ModelMapper modelMapper;
 	
 	@Autowired
-	AnnotationEditRepository annotationEditRepository;
+	private FolderService folderService;
 
 	@Autowired
-	DatasetRepository datasetRepository;
-
-	@Autowired
-	PagedAnnotationValidationPageLocksService locksService;
-
-	@Autowired
-	VirtuosoJDBC virtuosoJDBC;
+	private ServiceUtils serviceUtils;
 	
+    @Autowired
+    @Qualifier("paged-validations")
+	Map<String, PagedValidationOption> pavOptions;
+    
 	@Autowired
-	ResourceLoader resourceLoader;
+    @Qualifier("rdf-vocabularies")
+    private VocabularyContainer vocc;
 	
-	public boolean createPagedAnnotationValidation(UserPrincipal currentUser, String aegId) {
-
-		Optional<AnnotationEditGroup> aegOpt = aegRepository.findById(new ObjectId(aegId));
-		if (!aegOpt.isPresent()) {
-			return false;
-		}		
-
-		// temporary: do not create more that one pavs for an aeg;
-		List<PagedAnnotationValidation> pavList = pavRepository.findByAnnotationEditGroupId(new ObjectId(aegId));
-		if (pavList.size() > 0) {
-			return false;
-		}		
-
-		PagedAnnotationValidation pav = null;
+	
+	public Class<? extends ObjectContainer> getContainerClass() {
+		return PagedAnnotationValidationContainer.class;
+	}
+	
+	public class PagedAnnotationValidationContainer extends ObjectContainer implements PublishableContainer, ExecutableContainer, AnnotationValidationContainer {
+		private ObjectId pavId;
+		private ObjectId aegId;
 		
-		try {
-			AnnotationEditGroup aeg = aegOpt.get();
+		private PagedAnnotationValidation pav;
+		private AnnotationEditGroup aeg;
+		
+		private FileSystemConfiguration containerFileSystemConfiguration;
+	
+		public PagedAnnotationValidationContainer(UserPrincipal currentUser, ObjectId pavId) {
+			this.containerFileSystemConfiguration = fileSystemConfiguration;
 			
-			ac.software.semantic.model.Dataset ds = datasetRepository.findByUuid(aeg.getDatasetUuid()).get();
-			VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+			this.pavId = pavId;
+			this.currentUser = currentUser;
+			
+			load();
+			loadAnnotationEditGroup();
+		}
+		
+		public PagedAnnotationValidationContainer(UserPrincipal currentUser, PagedAnnotationValidation pav) {
+			this.containerFileSystemConfiguration = fileSystemConfiguration;
+			
+			this.pavId = pav.getId();
+			this.currentUser = currentUser;
+			
+			this.pav = pav;
+			loadAnnotationEditGroup();
+		}
 
-			List<String> annotatorUuids = annotatorDocumentRepository.findByAnnotatorEditGroupId(aeg.getId()).stream().map(adoc -> adoc.getUuid()).collect(Collectors.toList());
-			String annfilter = AnnotationEditGroup.annotatorFilter("v", annotatorUuids);
+		@Override
+		protected void load() {
+			Optional<PagedAnnotationValidation> pavOpt = pavRepository.findById(pavId);
 
-			pav = new PagedAnnotationValidation();
-			pav.setUserId(new ObjectId(currentUser.getId()));
-			pav.setUuid(UUID.randomUUID().toString());
-			pav.setAnnotationEditGroupId(aeg.getId());
-			pav.setDatasetUuid(aeg.getDatasetUuid());
-			pav.setOnProperty(aeg.getOnProperty());
-			pav.setAsProperty(aeg.getAsProperty());
-			pav.setAnnotatorDocumentUuid(annotatorUuids);
-			pav.setComplete(false);
-	
-			String datasetUri = SEMAVocabulary.getDataset(aeg.getDatasetUuid()).toString();
-			String spath = aeg.getOnPropertyAsString();
-	
-			logger.info("Starting paged annotation validation " + aeg.getDatasetUuid() + "/" + aeg.getAsProperty() + "/" + aeg.getOnProperty() + ".");
-			
-			String annotatedCountSparql = 
-					"SELECT (count(DISTINCT ?value) AS ?count)" + 
-			        "WHERE { " + 
-					"  GRAPH <" + datasetUri + "> { " + 
-			        "    ?s " + spath + " ?value }  " + 
-					"  GRAPH <" + aeg.getAsProperty() + "> { " + 
-			        "  ?v a <" + OAVocabulary.Annotation + "> ; " + 
-					"     <" + OAVocabulary.hasTarget + "> ?r . " + 
-				    annfilter + 
-			        "  ?r <" + SOAVocabulary.onProperty + "> \"" + spath + "\" ; " + 
-			        "     <" + SOAVocabulary.onValue + "> ?value ; " + 
-			        "     <" + OAVocabulary.hasSource + "> ?s . " + "  } " +
-	                "  FILTER (isLiteral(?value)) " + 
-	                " } ";
-	                
-			int annotatedValueCount = 0;
-			
-	//		System.out.println(QueryFactory.create(countSparql, Syntax.syntaxSPARQL_11));
-	
-			try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(),
-					QueryFactory.create(annotatedCountSparql, Syntax.syntaxSPARQL_11))) {
-	
-				ResultSet rs = qe.execSelect();
-	
-				while (rs.hasNext()) {
-					QuerySolution sol = rs.next();
-					annotatedValueCount = sol.get("count").asLiteral().getInt();
-				}
+			if (!pavOpt.isPresent()) {
+				return;
 			}
-	
-			int annotatedPages = annotatedValueCount / pageSize + (annotatedValueCount % pageSize > 0 ? 1 : 0);
-	
-			String nonAnnotatedCountSparql = 
-					"SELECT (count(DISTINCT ?value) AS ?count)" + 
-			        "WHERE { " + 
-					"  GRAPH <" + datasetUri + "> { " + 
-			        "    ?s " + spath + " ?value }  " + 
-					"  FILTER NOT EXISTS {GRAPH <" + aeg.getAsProperty() + "> { " + 
-			        "  ?v a <" + OAVocabulary.Annotation + "> ; " + 
-					"     <" + OAVocabulary.hasTarget + "> ?r . " + 
-				    annfilter + 			        
-			        "  ?r <" + SOAVocabulary.onProperty + "> \"" + spath + "\" ; " + 
-			        "     <" + SOAVocabulary.onValue + "> ?value ; " + 
-			        "     <" + OAVocabulary.hasSource + "> ?s . " + "  } } " +
-			        "  FILTER (isLiteral(?value)) " +
-			        "}";
-	
-			int nonAnnotatedValueCount = 0;
-			
-	//		System.out.println(QueryFactory.create(countSparql, Syntax.syntaxSPARQL_11));
-	
-			try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(),
-					QueryFactory.create(nonAnnotatedCountSparql, Syntax.syntaxSPARQL_11))) {
-	
-				ResultSet rs = qe.execSelect();
-	
-				while (rs.hasNext()) {
-					QuerySolution sol = rs.next();
-					nonAnnotatedValueCount = sol.get("count").asLiteral().getInt();
-				}
+
+			pav = pavOpt.get();
+		}
+		
+		private void loadAnnotationEditGroup() {
+			this.aegId = pav.getAnnotationEditGroupId();
+
+			Optional<AnnotationEditGroup> aegOpt = aegRepository.findById(pav.getAnnotationEditGroupId());
+
+			if (!aegOpt.isPresent()) {
+				return;
 			}
-	
-			int nonAnnotatedPages = nonAnnotatedValueCount / pageSize + (nonAnnotatedValueCount % pageSize > 0 ? 1 : 0);
-	
-			String annotationsCountSparql = 
-					"SELECT (count(?v) AS ?count)" + 
-			        "WHERE { " + 
-					"  GRAPH <" + datasetUri + "> { " + 
-			        "    ?s " + spath + " ?value }  " + 
-					"  GRAPH <" + aeg.getAsProperty() + "> { " + 
-			        "  ?v a <" + OAVocabulary.Annotation + "> ; " + 
-					"     <" + OAVocabulary.hasTarget + "> ?r . " + 
-				    annfilter + 			        
-			        "  ?r <" + SOAVocabulary.onProperty + "> \"" + spath + "\" ; " + 
-			        "     <" + SOAVocabulary.onValue + "> ?value ; " + 
-			        "     <" + OAVocabulary.hasSource + "> ?s . " + "  } " + 
-			        "  FILTER (isLiteral(?value)) " +
-			        "} ";
-			
-			int annotationsCount = 0;
-			
-	//		System.out.println(QueryFactory.create(countSparql, Syntax.syntaxSPARQL_11));
-	
-			try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(),
-					QueryFactory.create(annotationsCountSparql, Syntax.syntaxSPARQL_11))) {
-	
-				ResultSet rs = qe.execSelect();
-	
-				while (rs.hasNext()) {
-					QuerySolution sol = rs.next();
-					annotationsCount = sol.get("count").asLiteral().getInt();
-				}
+		
+			aeg = aegOpt.get();
+		}
+
+		@Override
+		protected void loadDataset() {
+			Optional<Dataset> datasetOpt = datasetRepository.findByUuid(pav.getDatasetUuid());
+
+			if (!datasetOpt.isPresent()) {
+				return;
 			}
+		
+			dataset = datasetOpt.get();
+		}
+
+		@Override
+		public ExecuteDocument getExecuteDocument() {
+			return getPagedAnnotationValidation();
+		}
+		
+		@Override
+		public MappingExecutePublishDocument<MappingPublishState> getPublishDocument() {
+			return getPagedAnnotationValidation();
+		}
+		
+		@Override
+		public AnnotationValidation getAnnotationValidation() {
+			return getPagedAnnotationValidation();
+		}
+		
+		public PagedAnnotationValidation getPagedAnnotationValidation() {
+			return pav;
+		}
+
+		public void setPagedAnnotationValidation(PagedAnnotationValidation pav) {
+			this.pav = pav;
+		}
+
+		public ObjectId getPagedAnnotationValidationId() {
+			return pavId;
+		}
+
+		public void setPagedAnnotationValidationId(ObjectId pavId) {
+			this.pavId = pavId;
+		}
+
+		@Override
+		public void save(MongoUpdateInterface mui) throws Exception {
+			synchronized (saveSyncString()) { 
+				load();
 			
-			logger.info("Paged annotation validation " + aeg.getDatasetUuid() + "/" + aeg.getAsProperty() + "/" + aeg.getOnProperty() + ": valueCount=" + annotatedValueCount + "/" + nonAnnotatedValueCount + " pages=" + annotatedPages + "/" + nonAnnotatedPages);
-	
-			pav.setPageSize(pageSize);
-			pav.setAnnotationsCount(annotationsCount);
-			pav.setAnnotatedPagesCount(annotatedPages);
-			pav.setNonAnnotatedPagesCount(nonAnnotatedPages);
-			
-			pav = pavRepository.save(pav);
-	
-			logger.info("Finished paged annotation validation " + aeg.getDatasetUuid() + "/" + aeg.getAsProperty() + "/" + aeg.getOnProperty() + ".");
-	
-			return true;
-		} catch (Exception ex) {
-			ex.printStackTrace();
-			
-			if (pav != null) {
-				pavRepository.deleteById(pav.getId());
+				mui.update(this);
+				
+				pavRepository.save(pav);
 			}
+		}
+		
+		@Override
+		public ObjectId getPrimaryId() {
+			return pavId;
+		}
+		
+		@Override
+		public ObjectId getSecondaryId() {
+			return aegId;
+		}
+		
+		@Override 
+		public void publish() throws Exception {
+			tripleStore.publish(getDatasetTripleStoreVirtuosoConfiguration(), this);
+		}
+		
+		@Override 
+		public void unpublish() throws Exception {
+			tripleStore.unpublish(getDatasetTripleStoreVirtuosoConfiguration(), this);
+		}
+
+		@Override
+		public boolean clearExecution() throws Exception {
+			return serviceUtils.clearExecution(this);
+		}
+		
+		@Override
+		public boolean clearExecution(MappingExecuteState es) throws Exception {
+			return serviceUtils.clearExecution(this, es);
+		}
+		
+		@Override
+		public PagedAnnotationValidationResponse asResponse() {
+			TripleStoreConfiguration vc = getDatasetTripleStoreVirtuosoConfiguration();
 			
-			return false;
+			return modelMapper.pagedAnnotationValidation2PagedAnnotationValidationResponse(vc, pav);
+		}
+		
+		public AnnotationEditGroup getAnnotationEditGroup() {
+			return aeg;
+		}
+
+		public void setAnnotationEditGroup(AnnotationEditGroup aeg) {
+			this.aeg = aeg;
+		}
+
+		public ObjectId getAnnotationEditGroupId() {
+			return aegId;
+		}
+
+		public void setAnnotationEditGroupId(ObjectId aegId) {
+			this.aegId = aegId;
+		}
+		
+		@Override
+		public String localSynchronizationString() {
+			return getContainerFileSystemConfiguration().getId().toString() + ":" + getPagedAnnotationValidationId().toString();
+		}
+
+		@Override
+		public FileSystemConfiguration getContainerFileSystemConfiguration() {
+			return containerFileSystemConfiguration;
+		}
+
+		@Override
+		public TaskType getExecuteTask() {
+			return TaskType.PAGED_ANNOTATION_VALIDATION_EXECUTE;
+		}
+
+		@Override
+		public TaskType getClearLastExecutionTask() {
+			return TaskType.PAGED_ANNOTATION_VALIDATION_CLEAR_LAST_EXECUTION;
+		}
+
+		@Override
+		public TaskType getPublishTask() {
+			return TaskType.PAGED_ANNOTATION_VALIDATION_PUBLISH;
+		}
+
+		@Override
+		public TaskType getUnpublishTask() {
+			return TaskType.PAGED_ANNOTATION_VALIDATION_UNPUBLISH;
+		}
+
+		@Override
+		public TaskType getRepublishTask() {
+			return TaskType.PAGED_ANNOTATION_VALIDATION_REPUBLISH;
+		}		
+		
+		@Override
+		public ConfigurationContainer<TripleStoreConfiguration> getVirtuosoConfigurations() {
+			return virtuosoConfigurations;
+		}		
+
+		@Override
+		public String syncString() {
+			return ("SYNC:" + containerString() + ":" + pavId).intern();
+		}
+
+		@Override
+		public String saveSyncString() {
+			return ("SYNC:SAVE:" + containerString() + ":" + pavId).intern();
+		}
+
+		@Override
+		public boolean delete() throws Exception {
+			throw new Exception("Not implemented");
 		}
 	}
 	
-	public List<ValueCount> getValuesForPage(VirtuosoConfiguration vc, String datasetUri, String onPropertyString, String asProperty, List<String> annotatorUuids, AnnotationValidationRequest mode, int page) {
-		String annfilter = AnnotationEditGroup.annotatorFilter("v", annotatorUuids);
+	@Override
+	public String synchronizedString(String id) {
+		return syncString(id);
+	}
+	
+	public static String syncString(String id) {
+		return ("SYNC:" + PagedAnnotationValidationContainer.class.getName() + ":" + id).intern();
+	}
+	
+	@Override
+	public PagedAnnotationValidationContainer getContainer(UserPrincipal currentUser, ObjectIdentifier objId) {
+		PagedAnnotationValidationContainer pavc = new PagedAnnotationValidationContainer(currentUser, ((SimpleObjectIdentifier)objId).getId());
+//		System.out.println(">> " + mc.mappingDocument + " " + mc.getDataset());
+		if (pavc.pav == null || pavc.getDataset() == null) {
+			return null;
+		} else {
+			return pavc;
+		}
+	}
+	
+	public PagedAnnotationValidationContainer getContainer(UserPrincipal currentUser, PagedAnnotationValidation pav) {
+		PagedAnnotationValidationContainer pavc = new PagedAnnotationValidationContainer(currentUser, pav);
+		if (pavc.pav == null || pavc.getDataset() == null) {
+			return null;
+		} else {
+			return pavc;
+		}
+	}
+	
+	private int getAnnotatedValueCount(String datasetUri, String onPropertyPath, String asProperty, String annfilter, TripleStoreConfiguration vc, String fromClause) {
+		String annotatedCountSparql = 
+				"SELECT (COUNT(DISTINCT ?value) AS ?count)" +
+		        fromClause + 
+		        "FROM NAMED <" + asProperty + "> " + 
+		        "WHERE { " + 
+		        "    ?s " + onPropertyPath + " ?value  " + 
+				"  GRAPH <" + asProperty + "> { " + 
+		        "  ?v a <" + OAVocabulary.Annotation + "> ; " + 
+				"     <" + OAVocabulary.hasTarget + "> ?r . " + 
+			    annfilter + 
+		        "  ?r <" + SOAVocabulary.onProperty + "> \"" + onPropertyPath + "\" ; " + 
+		        "     <" + SOAVocabulary.onValue + "> ?value ; " + 
+		        "     <" + OAVocabulary.hasSource + "> ?s . " + "  } " +
+                "  FILTER (isLiteral(?value)) " + 
+                " } ";
+                
+		int annotatedValueCount = 0;
 		
-		String graph = 
-			"GRAPH <" + asProperty + "> { " +
-            "  ?v a <" + OAVocabulary.Annotation + "> ; " + 
-		    "     <" + OAVocabulary.hasTarget + "> ?r . " + 
-            annfilter +
-            "  ?r <" + SOAVocabulary.onProperty + "> \"" + onPropertyString + "\" ; " + 
-		    "     <" + SOAVocabulary.onValue + "> ?value ; " + 
-            "     <" + OAVocabulary.hasSource + "> ?s . " + 
-		    " }";
-		
-		if (mode == AnnotationValidationRequest.ALL) {
-//			graph +=  " OPTIONAL { " + graph + " }  "; 
-		} else if (mode == ANNOTATED_ONLY) {
-			graph = " FILTER EXISTS { " + graph + " }  ";
-		} else if (mode == UNANNOTATED_ONLY) {
-			graph = " FILTER NOT EXISTS { " + graph + " }  "; 
+//		System.out.println("getAnnotatedValueCount");
+//		System.out.println(QueryFactory.create(annotatedCountSparql, Syntax.syntaxSPARQL_11));
+
+		try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(annotatedCountSparql, Syntax.syntaxSPARQL_11))) {
+
+			ResultSet rs = qe.execSelect();
+
+			while (rs.hasNext()) {
+				QuerySolution sol = rs.next();
+				annotatedValueCount = sol.get("count").asLiteral().getInt();
+			}
 		}
 		
-		// should also filter out URI values here but this would spoil pagination due to previous bug.
-		String sparql = 
-            "SELECT ?value ?valueCount WHERE { " +
-			"  SELECT ?value (count(*) AS ?valueCount)" +
-	        "  WHERE { " + 
-		    "    GRAPH <" + datasetUri + "> { " + 
-	        "      ?s " + onPropertyString + " ?value } " + 
-		         graph +
-		    "    FILTER (isLiteral(?value)) " +		         
-		    "  } " +
-			"  GROUP BY ?value " + 
-			"  ORDER BY desc(?valueCount) ?value } " + 
- 		    "LIMIT " + pageSize + " OFFSET " + pageSize * (page - 1);
+		return annotatedValueCount;
+	}
+	
+	private int getNonAnnotatedValueCount(String datasetUri, String onPropertyPath, String asProperty, String annfilter, TripleStoreConfiguration vc, String fromClause) {
+		String nonAnnotatedCountSparql = 
+				"SELECT (COUNT(DISTINCT ?value) AS ?count)" +
+		        fromClause + 
+		        "FROM NAMED <" + asProperty + "> " + 
+		        "WHERE { " + 
+		        "    ?s " + onPropertyPath + " ?value  " + 
+				"  FILTER NOT EXISTS { GRAPH <" + asProperty + "> { " + 
+		        "  ?v a <" + OAVocabulary.Annotation + "> ; " + 
+				"     <" + OAVocabulary.hasTarget + "> ?r . " + 
+			    annfilter + 			        
+		        "  ?r <" + SOAVocabulary.onProperty + "> \"" + onPropertyPath + "\" ; " + 
+		        "     <" + SOAVocabulary.onValue + "> ?value ; " + 
+		        "     <" + OAVocabulary.hasSource + "> ?s . " + "  } } " +
+		        "  FILTER (isLiteral(?value)) " +
+		        "}";
 
+		int nonAnnotatedValueCount = 0;
+		
+//		System.out.println(QueryFactory.create(countSparql, Syntax.syntaxSPARQL_11));
+
+		try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(nonAnnotatedCountSparql, Syntax.syntaxSPARQL_11))) {
+
+			ResultSet rs = qe.execSelect();
+
+			while (rs.hasNext()) {
+				QuerySolution sol = rs.next();
+				nonAnnotatedValueCount = sol.get("count").asLiteral().getInt();
+			}
+		}
+		
+		return nonAnnotatedValueCount;
+	}
+	
+	private int getAnnotationsCount(String datasetUri, String onPropertyPath, String asProperty, String annfilter, TripleStoreConfiguration vc, String fromClause) {
+		String annotationsCountSparql = 
+				"SELECT (COUNT(?v) AS ?count)" + 
+		        fromClause + 
+		        "FROM NAMED <" + asProperty + "> " + 
+		        "WHERE { " + 
+		        "    ?s " + onPropertyPath + " ?value  " + 
+				"  GRAPH <" + asProperty + "> { " + 
+		        "  ?v a <" + OAVocabulary.Annotation + "> ; " + 
+				"     <" + OAVocabulary.hasTarget + "> ?r . " + 
+			    annfilter + 			        
+		        "  ?r <" + SOAVocabulary.onProperty + "> \"" + onPropertyPath + "\" ; " + 
+		        "     <" + SOAVocabulary.onValue + "> ?value ; " + 
+		        "     <" + OAVocabulary.hasSource + "> ?s . " + "  } " + 
+		        "  FILTER (isLiteral(?value)) " +
+		        "} ";
+		
+		int annotationsCount = 0;
+		
+//		System.out.println(QueryFactory.create(countSparql, Syntax.syntaxSPARQL_11));
+
+		try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(annotationsCountSparql, Syntax.syntaxSPARQL_11))) {
+
+			ResultSet rs = qe.execSelect();
+
+			while (rs.hasNext()) {
+				QuerySolution sol = rs.next();
+				annotationsCount = sol.get("count").asLiteral().getInt();
+			}
+		}
+		
+		return annotationsCount;
+	}
+	
+	private String buildQuery(PagedValidationOption pvo, String datasetUri, String onPropertyString, String asProperty, List<String> annotatorUuids, AnnotationValidationRequest mode, Map<String, SortingType> pavOrdering,int page, String fromClause) {
+		String query = null;
+		if (mode == AnnotationValidationRequest.ALL) {
+			query = pvo.getAllQuery();
+		} else if (mode == ANNOTATED_ONLY) {
+			query = pvo.getAnnotatedQuery();
+		} else if (mode == UNANNOTATED_ONLY) {
+			query = pvo.getUnannotatedQuery();
+		}
+		
+		query = query.replaceAll("\\{@@PAV_DATASET_URI@@\\}",fromClause).
+				replaceAll("\\{@@PAV_AS_PROPERTY@@\\}", asProperty).
+				replaceAll("\\{@@PAV_ON_PROPERTY_STRING@@\\}", onPropertyString).
+				replaceAll("\\{@@PAV_GENERATORS@@\\}", aegService.annotatorFilter("v", annotatorUuids)).
+				concat("LIMIT " + pageSize + " OFFSET " + pageSize * (page - 1));
+		
+		for (Map.Entry<String, SortingType> entry : pavOrdering.entrySet()) {
+			query = query.replaceAll("\\{@@PAV_SORTING_" + entry.getKey() + "@@\\}", entry.getValue().toString());
+		}
+		
+//		System.out.println("PAV:buildQuery");
+//		System.out.println(QueryFactory.create(query, Syntax.syntaxSPARQL_11));
+		
+		return query;
+				
+	}
+	
+	public List<ValueCount> getValuesForPage(TripleStoreConfiguration vc, String datasetUri, String pavMode, String onPropertyString, String asProperty, List<String> annotatorUuids, AnnotationValidationRequest mode, int page, String fromClause) {
+//		String annfilter = aegService.annotatorFilter("v", annotatorUuids);
+//		
+//		String graph = 
+//			"GRAPH <" + asProperty + "> { " +
+//            "  ?v a <" + OAVocabulary.Annotation + "> ; " + 
+//		    "     <" + OAVocabulary.hasTarget + "> ?r . " + 
+//            annfilter +
+//            "  ?r <" + SOAVocabulary.onProperty + "> \"" + onPropertyString + "\" ; " + 
+//		    "     <" + SOAVocabulary.onValue + "> ?value ; " + 
+//            "     <" + OAVocabulary.hasSource + "> ?s . " + 
+//		    " }";
+//		
+//		if (mode == AnnotationValidationRequest.ALL) {
+////			graph +=  " OPTIONAL { " + graph + " }  "; 
+//		} else if (mode == ANNOTATED_ONLY) {
+//			graph = " FILTER EXISTS { " + graph + " }  ";
+//		} else if (mode == UNANNOTATED_ONLY) {
+//			graph = " FILTER NOT EXISTS { " + graph + " }  "; 
+//		}
+//		
+//		// should also filter out URI values here but this would spoil pagination due to previous bug.
+//		String sparql = 
+//            "SELECT ?value ?valueCount WHERE { " +
+//			"  SELECT ?value (count(*) AS ?valueCount)" +
+//	        "  WHERE { " + 
+//		    "    GRAPH <" + datasetUri + "> { " + 
+//	        "      ?s " + onPropertyString + " ?value } " + 
+//		         graph +
+//		    "    FILTER (isLiteral(?value)) " +		         
+//		    "  } " +
+//			"  GROUP BY ?value " + 
+//			"  ORDER BY desc(?valueCount) ?value } " + 
+// 		    "LIMIT " + pageSize + " OFFSET " + pageSize * (page - 1);
+		
+		if (pavMode == null) {
+			pavMode = "PAV-VAL:CNT:DESC"; // for old data, may be update mongo
+		}
+		
+		String[] pavElements = pavMode.split("-");
+		String pavBase = "PAV";
+		Map<String, SortingType> pavOrderings = new HashMap<>();
+		for (int i = 1; i < pavElements.length; i++) {
+			String el = pavElements[i].substring(0, pavElements[i].lastIndexOf(":"));
+			pavBase += "-" + el;
+			pavOrderings.put(el, SortingType.get(pavElements[i].substring(pavElements[i].lastIndexOf(":") + 1)));
+		}
+		
+		String sparql = buildQuery(pavOptions.get(pavBase), datasetUri, onPropertyString, asProperty, annotatorUuids, mode, pavOrderings, page, fromClause);
 
     	List<ValueCount> values = new ArrayList<>();
-//	    System.out.println(QueryFactory.create(sparql, Syntax.syntaxSPARQL_11));
+    	
+//    	System.out.println(QueryFactory.create(sparql, Syntax.syntaxSPARQL_11));
     	
     	try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(sparql, Syntax.syntaxSPARQL_11))) {
     		
@@ -359,7 +647,7 @@ public class PagedAnnotationValidationService {
     		while (rs.hasNext()) {
     			QuerySolution qs = rs.next();
     			RDFNode value = qs.get("value");
-    			int count = qs.get("valueCount").asLiteral().getInt(); //valueCount is the number a value appears (not of annotations on value)
+    			int count = qs.get("valueCount").asLiteral().getInt(); //valueCount is the number a value appears (not of annotations on value) wrong!
     			
     			values.add(new ValueCount(value, count));
     		}
@@ -368,6 +656,817 @@ public class PagedAnnotationValidationService {
     	return values;
 		
 	}
+	
+	private class AnnotationValuesContainer {
+		private Map<AnnotationEditValue, ValueAnnotation> valueMap;
+		private int totalAnnotationsCount;
+		
+		public Map<AnnotationEditValue, ValueAnnotation> getValueMap() {
+			return valueMap;
+		}
+		
+		public void setValueMap(Map<AnnotationEditValue, ValueAnnotation> valueMap) {
+			this.valueMap = valueMap;
+		}
+		
+		public int getTotalAnnotationsCount() {
+			return totalAnnotationsCount;
+		}
+		
+		public void setTotalAnnotationsCount(int totalAnnotationsCount) {
+			this.totalAnnotationsCount = totalAnnotationsCount;
+		}
+	}
+	
+	private AnnotationValuesContainer readPage(String datasetUri, String pavMode, String onPropertyString, String asProperty, List<String> annotatorDocumentUuids, String annfilter, TripleStoreConfiguration vc, AnnotationValidationRequest mode, int page, String fromClause) {
+
+		List<ValueCount> values = getValuesForPage(vc, datasetUri, pavMode, onPropertyString, asProperty, annotatorDocumentUuids, mode, page, fromClause);
+		
+		Map<AnnotationEditValue, ValueAnnotation> res = new LinkedHashMap<>();
+
+    	StringBuffer sb = new StringBuffer();
+    	for (ValueCount vct : values) {
+			AnnotationEditValue aev = null;
+    		
+    		if (vct.getValue().isLiteral()) {
+				Literal l = vct.getValue().asLiteral();
+				String lf = l.getLexicalForm();
+				
+				lf = Utils.escapeLiteralNoDoubleQuotes(lf);
+				sb.append(NodeFactory.createLiteralByValue(lf, l.getLanguage(), l.getDatatype()).toString());
+	    		sb.append(" ");
+				
+				aev = new AnnotationEditValue(vct.getValue().asLiteral());
+			} else {
+				//ignore URI values. They should not be returned by getValuesForPage 
+				
+//				sb.append("<" + vc.getValue().toString() + ">");
+//	    		sb.append(" ");
+
+//				aev = new AnnotationEditValue(vc.getValue().asResource());
+			}
+    		
+    		if (aev != null) {
+				ValueAnnotation va = new ValueAnnotation();
+				va.setOnValue(aev);
+				va.setCount(vct.getCount()); // the number of appearances of the value
+				
+				res.put(aev, va);
+    		}
+    	}
+    	
+    	String valueString = sb.toString();
+    	
+		String sparql = null;
+		
+		String graph = 
+//			"GRAPH <" + asProperty + "> { " + 
+		    "  ?v a <" + OAVocabulary.Annotation + "> ; " + 
+	        "     <" + OAVocabulary.hasTarget + "> ?r . " + 
+		    annfilter +
+		    "  ?r <" + SOAVocabulary.onProperty + "> \"" + onPropertyString + "\" ; " + 
+		    "     <" + SOAVocabulary.onValue + "> ?value ; " + 
+		    "     <" + OAVocabulary.hasSource + "> ?s . " + 
+		    "  { ?v <" + OAVocabulary.hasBody + "> ?t . FILTER (!isBlank(?t)) } UNION " + 
+		    "  { ?v <" + OAVocabulary.hasBody + "> [ " + 
+		    "  a <" + OWLTime.DateTimeInterval + "> ; " + 
+		    "  <" + OWLTime.intervalStartedBy + ">|<" + OWLTime.hasBeginning + "> ?t ; " + 
+		    "  <" + OWLTime.intervalFinishedBy + ">|<" + OWLTime.hasEnd + "> ?ie ]  }  " +
+		    "  OPTIONAL { ?r <" + legacyVocabulary.fixLegacy(OAVocabulary.start) + "> ?start } ." + 
+		    "  OPTIONAL { ?r <" + legacyVocabulary.fixLegacy(OAVocabulary.end) + "> ?end } "; 
+//		    "} ";
+		    		
+		String sparqlRef = null;
+		String sparqlGen = null;
+		if (mode == ANNOTATED_ONLY) {
+			sparql = 
+//					"SELECT distinct ?value ?t ?ie ?start ?end (AVG(?sc) AS ?score) (count(*) AS ?count) (GROUP_CONCAT(?ref ; separator=\"@@\") AS ?refConcat) " + 
+					"SELECT distinct ?value ?t ?ie ?start ?end (AVG(?sc) AS ?score) (count(*) AS ?count) " +
+			        fromClause + 
+			        "FROM NAMED <" + asProperty + ">" + 
+		            "WHERE { " + 
+		            "  ?s " + onPropertyString + " ?value  " + 
+		            "  GRAPH <" + asProperty + "> { " + 
+		                 graph + " . " +
+		            "    OPTIONAL { ?v <" + SOAVocabulary.score + "> ?sc } " + 
+		            "  } " +  
+//                  "  OPTIONAL { ?r <" + DCTVocabulary.isReferencedBy + ">  ?ref } . " +                       
+                    "  VALUES ?value { " + valueString  + " } " +     
+		            "} " + 
+		            "GROUP BY ?t ?ie ?value ?start ?end ";// +
+//					"ORDER BY DESC(?count) ?value ?start ?end";
+			
+			sparqlRef = "SELECT distinct ?value ?t ?ie ?start ?end (count(*) AS ?count) ?ref " + 
+			        fromClause + 
+			        "FROM NAMED <" + asProperty + ">" + 
+					"WHERE { " + 
+		            "  ?s " + onPropertyString + " ?value  " + 
+		            "  GRAPH <" + asProperty + "> { " + 
+		                  graph + " . " + 
+		               " ?r <" + DCTVocabulary.isReferencedBy + ">  ?ref } " +  
+                    "  VALUES ?value { " + valueString  + " } " +     
+		            "} " + 
+		            "GROUP BY ?t ?ie ?value ?start ?end ?ref ";
+			
+			sparqlGen = "SELECT distinct ?value ?t ?ie ?start ?end ?generator " + 
+			        fromClause + 
+			        "FROM NAMED <" + asProperty + ">" + 
+		            "WHERE { " + 
+		            "  ?s " + onPropertyString + " ?value  " + 
+		            "  GRAPH <" + asProperty + "> { " + graph + " } " +  
+                    "  VALUES ?value { " + valueString  + " } " +     
+		            "} " + 
+		            "GROUP BY ?t ?ie ?value ?start ?end ?generator ";
+		} else if (mode == UNANNOTATED_ONLY) {
+			sparql = 
+					"SELECT distinct ?value (count(*) AS ?count) " + 
+			        fromClause + 
+			        "FROM NAMED <" + asProperty + ">" + 
+			        "WHERE { " + 
+					"    ?s " + onPropertyString + " ?value  " + 
+		            "  FILTER NOT EXISTS { " + 
+					"    GRAPH <" + asProperty + "> { " + 
+					"      ?v a <" + OAVocabulary.Annotation + "> ; " + 
+		            "         <" + OAVocabulary.hasTarget + "> ?r . " + 
+		                   annfilter +
+					"      ?r <" + SOAVocabulary.onProperty + "> \"" + onPropertyString + "\" ; " + 
+					"         <" + SOAVocabulary.onValue + "> ?value ; " + 
+					"         <" + OAVocabulary.hasSource + "> ?s  } } " +
+					"  VALUES ?value { " + valueString  + " } " +
+					"} " +
+					"GROUP BY ?value ";// +
+//			        "ORDER BY DESC(?count) ?value ";
+		}    	
+		
+//		System.out.println("readPage");
+//    	System.out.println(QueryFactory.create(sparql, Syntax.syntaxSPARQL_11));
+//    	System.out.println(QueryFactory.create(sparqlRef, Syntax.syntaxSPARQL_11));
+    	
+//		System.out.println(sb);
+//		System.out.println(mode);
+		
+		int totalAnnotationsCount = 0;
+		if (valueString.length() > 0) {
+			
+//			System.out.println(QueryFactory.create(sparql, Syntax.syntaxSPARQL_11));
+			
+			try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(sparql, Syntax.syntaxSPARQL_11))) {
+			
+				ResultSet rs = qe.execSelect();
+				
+				while (rs.hasNext()) {
+					QuerySolution sol = rs.next();
+					
+					RDFNode value = sol.get("value");
+					
+					String ann = sol.get("t") != null ? sol.get("t").toString() : null;
+					String ie = sol.get("ie") != null ? sol.get("ie").toString() : null;
+
+					Integer start = sol.get("start") != null ? sol.get("start").asLiteral().getInt() : null;
+					Integer end = sol.get("end") != null ? sol.get("end").asLiteral().getInt() : null;
+					Double score = sol.get("score") != null ? sol.get("score").asLiteral().getDouble() : null;
+					
+//					String refConcat = sol.get("refConcat") != null ? sol.get("refConcat").toString() : null;
+					
+					int count = sol.get("count").asLiteral().getInt();
+//					int refCount = sol.get("refCount").asLiteral().getInt();
+					
+					AnnotationEditValue aev = null;
+					if (value.isResource()) {
+						aev = new AnnotationEditValue(value.asResource());
+					} else if (value.isLiteral()) {
+						aev = new AnnotationEditValue(value.asLiteral());
+					}
+					
+					totalAnnotationsCount += count;
+					
+					ValueAnnotation va = res.get(aev);
+					if (va != null && ann != null) {
+						ValueAnnotationDetail vad = new ValueAnnotationDetail();
+							
+						vad.setValue(ann);
+						vad.setValue2(ie);
+						vad.setStart(start);
+						vad.setEnd(end);
+						vad.setCount(count); // the number of appearances of the annotation 
+							                 // it is different than the number of appearances of the value if multiple annotations exist on the same value
+							
+						vad.setScore(score);
+							
+//						if (refConcat.length() != 0) {
+//							Multiset<String> refSet = HashMultiset.create();
+//							for (String s : refConcat.split("@@")) {
+//								refSet.add(s);
+//							}
+//							
+//							for (Multiset.Entry<String> entry : refSet.entrySet()) {
+//								vad.addReference(new ValueAnnotationReference(entry.getElement(), entry.getCount()));
+//							}
+//						}
+						
+						va.getDetails().add(vad);
+
+					}
+				}
+
+			}
+			
+			// very inefficient but virtuoso has bugs and no better way? .....
+			
+			if (sparqlRef != null) {
+				
+				//get referenced by per annotation
+				
+//				System.out.println(QueryFactory.create(sparqlRef, Syntax.syntaxSPARQL_11));
+				
+				try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(sparqlRef, Syntax.syntaxSPARQL_11))) {
+					
+					ResultSet rs = qe.execSelect();
+					
+					while (rs.hasNext()) {
+						QuerySolution sol = rs.next();
+						
+						RDFNode value = sol.get("value");
+						
+						String ann = sol.get("t") != null ? sol.get("t").toString() : null;
+						String ie = sol.get("ie") != null ? sol.get("ie").toString() : null;
+	
+						Integer start = sol.get("start") != null ? sol.get("start").asLiteral().getInt() : null;
+						Integer end = sol.get("end") != null ? sol.get("end").asLiteral().getInt() : null;
+						
+						String ref = sol.get("ref").toString();
+						
+						int count = sol.get("count").asLiteral().getInt();
+	//					int refCount = sol.get("refCount").asLiteral().getInt();
+						
+						AnnotationEditValue aev = null;
+						if (value.isResource()) {
+							aev = new AnnotationEditValue(value.asResource());
+						} else if (value.isLiteral()) {
+							aev = new AnnotationEditValue(value.asLiteral());
+						}
+						
+						ValueAnnotation va = res.get(aev);
+						if (va != null) {
+							for (ValueAnnotationDetail vad : va.getDetails()) {
+								if (eq(vad.getValue(), ann) && eq(vad.getValue2(),ie) && eq(vad.getStart(), start) && eq(vad.getEnd(),end)) {
+	
+									vad.addReference(new ValueAnnotationReference(ref, count));
+								}
+							}
+						}
+					}
+	
+				}
+				
+				
+				//get default targets per annotation
+				Map<String, String> defaultTargetPropertyMap = new HashMap<>();
+				
+//				System.out.println(QueryFactory.create(sparqlGen, Syntax.syntaxSPARQL_11));
+				
+				try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(sparqlGen, Syntax.syntaxSPARQL_11))) {
+					
+					ResultSet rs = qe.execSelect();
+					
+					while (rs.hasNext()) {
+						QuerySolution sol = rs.next();
+						
+						RDFNode value = sol.get("value");
+						
+						String ann = sol.get("t") != null ? sol.get("t").toString() : null;
+						String ie = sol.get("ie") != null ? sol.get("ie").toString() : null;
+	
+						Integer start = sol.get("start") != null ? sol.get("start").asLiteral().getInt() : null;
+						Integer end = sol.get("end") != null ? sol.get("end").asLiteral().getInt() : null;
+						
+						String generator = sol.get("generator").toString();
+						
+						AnnotationEditValue aev = null;
+						if (value.isResource()) {
+							aev = new AnnotationEditValue(value.asResource());
+						} else if (value.isLiteral()) {
+							aev = new AnnotationEditValue(value.asLiteral());
+						}
+						
+						ValueAnnotation va = res.get(aev);
+						if (va != null) {
+							for (ValueAnnotationDetail vad : va.getDetails()) {
+								if (eq(vad.getValue(), ann) && eq(vad.getValue2(), ie) && eq(vad.getStart(), start) && eq(vad.getEnd(), end)) {
+
+									String dp = null;
+									if (!defaultTargetPropertyMap.containsKey(generator)) {
+										AnnotatorDocument adoc = annotatorDocumentRepository.findByUuid(resourceVocabulary.getUuidFromResourceUri(generator)).get();
+										
+										dp = adoc.getDefaultTarget();
+										defaultTargetPropertyMap.put(generator, dp);
+									} else {
+										dp = defaultTargetPropertyMap.get(generator);
+									}
+									
+									if (dp != null) {
+										vad.addDefaultTarget(dp);
+									}
+								}
+							}
+						}
+					}
+	
+				}
+
+			}
+		}
+		
+		AnnotationValuesContainer avc = new AnnotationValuesContainer();
+
+		avc.setValueMap(res);
+		avc.setTotalAnnotationsCount(totalAnnotationsCount);
+
+		return avc;
+	}
+	
+
+	private boolean eq(Object o1, Object o2) {
+		if ((o1 == null && o2 == null) || (o1 != null && o2 != null && o1.equals(o2))) {
+			return true;
+		} else {
+			return false;
+		}
+	}
+	
+	public PagedAnnotationValidation create(UserPrincipal currentUser, String aegId, String name, String mode) {
+
+		Optional<AnnotationEditGroup> aegOpt = aegRepository.findById(new ObjectId(aegId));
+		if (!aegOpt.isPresent()) {
+			return null;
+		}		
+
+		// temporary: do not create more that one pavs for an aeg;
+		List<PagedAnnotationValidation> pavList = pavRepository.findByAnnotationEditGroupId(new ObjectId(aegId));
+		if (pavList.size() > 0) {
+			return null;
+		}		
+
+		PagedAnnotationValidation pav = null;
+		
+		try {
+
+			Dataset ds = datasetRepository.findByUuid(aegOpt.get().getDatasetUuid()).get();
+			TripleStoreConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+
+			pav = createPagedAnnotationValidation(currentUser, aegOpt.get(), vc);
+			
+			pav.setUuid(UUID.randomUUID().toString());
+			pav.setComplete(false);
+			pav.setLifecycle(PagedAnnotationValidationState.STARTED);
+			pav.setLifecycleStartedAt(new Date());
+			pav.setName(name);
+			pav.setMode(mode);
+			pav.setUpdatedAt(new Date());
+			pav = pavRepository.save(pav);
+	
+			return pav;
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			
+			if (pav != null) {
+				pavRepository.deleteById(pav.getId());
+			}
+			
+			return null;
+		}
+	}
+	
+	public PagedAnnotationValidation updatePagedAnnotationValidation(PagedAnnotationValidationContainer pavc, String name, String mode) {
+
+		PagedAnnotationValidation pav = pavc.getPagedAnnotationValidation();
+
+		pav.setName(name);
+		
+		if (!mode.equals(pav.getMode())) {
+			pav.setUpdatedAt(new Date());
+		}
+		
+		pav.setMode(mode);
+		
+		pav = pavRepository.save(pav);
+	
+		return pav;
+	}
+	
+	// should be updated for other values sorting
+	public void recreatePagedAnnotationValidation(UserPrincipal currentUser, PagedAnnotationValidation oldPav) throws Exception {
+
+		Optional<AnnotationEditGroup> aegOpt = aegRepository.findById(oldPav.getAnnotationEditGroupId());
+
+		ac.software.semantic.model.Dataset ds = datasetRepository.findByUuid(aegOpt.get().getDatasetUuid()).get();
+		TripleStoreConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+
+		PagedAnnotationValidation newPav = createPagedAnnotationValidation(currentUser, aegOpt.get(), vc);
+		
+//			newPav.setUuid(oldPav.getUuid());
+//			newPav.setComplete(oldPav.isComplete());
+//			newPav.setName(oldPav.getName());
+		
+//			oldPav.setState(PagedAnnotationValidationState.RESUMING);
+//			oldPav.setLastStateChange(new Date());
+
+		oldPav.setAnnotatorDocumentUuid(newPav.getAnnotatorDocumentUuid());
+		oldPav.setAnnotatedPagesCount(newPav.getAnnotatedPagesCount());
+		oldPav.setAnnotationsCount(newPav.getAnnotationsCount());
+		oldPav.setNonAnnotatedPagesCount(newPav.getNonAnnotatedPagesCount());
+		
+		pavRepository.save(oldPav);
+		
+		logger.info("Saved updated paged annotation validation for " + oldPav.getId());
+		
+		pavpRepository.deleteByPagedAnnotationValidationId(oldPav.getId());
+
+		logger.info("Deleted exisiting paged annotation validation pages for " + oldPav.getId());
+		
+		List<AnnotationEdit> edits = annotationEditRepository.findByPagedAnnotationValidationId(oldPav.getId());
+		
+		logger.info("Creating updated annotation validation pages for " + oldPav.getId() + ": " + edits.size() + " annotation edits.");
+		
+		if (edits.size() == 0) {
+			return;
+		}
+
+		Set<String> editIds = edits.stream().map(edit -> edit.getId().toString()).collect(Collectors.toSet());
+		
+		if (editIds.size() > 0) {
+			for (int j = 1; j <= Math.max(newPav.getAnnotatedPagesCount(),newPav.getNonAnnotatedPagesCount()); j++ ) {
+			
+//					System.out.println(">> " + j);
+				if (editIds.isEmpty()) {
+					break;
+				}
+
+				if (j <= newPav.getAnnotatedPagesCount()) {
+					int before = editIds.size();
+					PagedAnnotationValidationPage pavp = repaginateSimulationView(oldPav, vc, AnnotationValidationRequest.ANNOTATED_ONLY, j, editIds);
+					if (before > editIds.size()) {
+						logger.info("Created: " + pavp.getMode() + " page " + pavp.getPage() + " : " + pavp.getAnnotationsCount() + " " + pavp.getValidatedCount() + " " + pavp.getUnvalidatedCount() + " " + pavp.getAddedCount() + " / " + editIds.size());
+						pavpRepository.save(pavp);
+					}
+				}
+
+				if (editIds.isEmpty()) {
+					break;
+				}
+
+				if (j <= newPav.getNonAnnotatedPagesCount()) {
+					int before = editIds.size();
+					PagedAnnotationValidationPage pavp = repaginateSimulationView(oldPav, vc, AnnotationValidationRequest.UNANNOTATED_ONLY, j, editIds);
+					if (before > editIds.size()) {
+						logger.info("Created: " + pavp.getMode() + " PAGE " + pavp.getPage() + " : " + pavp.getAnnotationsCount() + " " + pavp.getValidatedCount() + " " + pavp.getUnvalidatedCount() + " " + pavp.getAddedCount() + " / " + editIds.size());
+						pavpRepository.save(pavp);
+					}
+				}					
+			}
+
+			logger.info("Created updated annotation validation pages for " + oldPav.getId() + ". " +  (editIds.size() > 0 ? edits.size() + "have been missed." : ""));
+		}
+			
+	}
+	
+	private PagedAnnotationValidation createPagedAnnotationValidation(UserPrincipal currentUser, AnnotationEditGroup aeg, TripleStoreConfiguration vc) throws Exception {
+
+		List<String> annotatorUuids = annotatorDocumentRepository.findByAnnotatorEditGroupId(aeg.getId()).stream().map(adoc -> adoc.getUuid()).collect(Collectors.toList());
+		String annfilter = aegService.annotatorFilter("v", annotatorUuids);
+
+		String datasetUri = resourceVocabulary.getDatasetAsResource(aeg.getDatasetUuid()).toString();
+		DatasetCatalog dcg = schemaService.asCatalog(aeg.getDatasetUuid());
+		String fromClause = schemaService.buildFromClause(dcg);
+		
+		String onPropertyPath = PathElement.onPathStringListAsSPARQLString(aeg.getOnProperty());
+
+		logger.info("Creating paged annotation validation on " + aeg.getDatasetUuid() + "/" + aeg.getAsProperty() + "/" + aeg.getOnProperty() + ".");
+		
+		int annotatedValueCount = getAnnotatedValueCount(datasetUri, onPropertyPath, aeg.getAsProperty(), annfilter, vc, fromClause);
+		int annotatedPages = annotatedValueCount / pageSize + (annotatedValueCount % pageSize > 0 ? 1 : 0);
+
+		int nonAnnotatedValueCount = getNonAnnotatedValueCount(datasetUri, onPropertyPath, aeg.getAsProperty(), annfilter, vc, fromClause);
+		int nonAnnotatedPages = nonAnnotatedValueCount / pageSize + (nonAnnotatedValueCount % pageSize > 0 ? 1 : 0);
+
+		int annotationsCount = getAnnotationsCount(datasetUri, onPropertyPath, aeg.getAsProperty(), annfilter, vc, fromClause);
+
+		PagedAnnotationValidation pav = new PagedAnnotationValidation();
+
+		pav.setUserId(new ObjectId(currentUser.getId()));
+		pav.setAnnotatorDocumentUuid(annotatorUuids);
+		pav.setAnnotationEditGroupId(aeg.getId());
+		pav.setDatasetUuid(aeg.getDatasetUuid());
+		pav.setDatabaseId(database.getId());
+		pav.setOnProperty(aeg.getOnProperty());
+		pav.setAsProperty(aeg.getAsProperty());
+
+		pav.setPageSize(pageSize);
+		pav.setAnnotationsCount(annotationsCount);
+		pav.setAnnotatedPagesCount(annotatedPages);
+		pav.setNonAnnotatedPagesCount(nonAnnotatedPages);
+
+		logger.info("Created paged annotation validation on " + aeg.getDatasetUuid() + "/" + aeg.getAsProperty() + "/" + aeg.getOnProperty() + ": values=" + annotatedValueCount + "/" + nonAnnotatedValueCount + ", pages=" + annotatedPages + "/" + nonAnnotatedPages);
+
+		return pav;
+	}
+	
+	public PagedAnnotationValidatationDataResponse view(UserPrincipal currentUser, TripleStoreConfiguration vc, String pavId, AnnotationValidationRequest mode, int page, boolean ignoreAdded) {
+		
+		Optional<PagedAnnotationValidation> pavOpt = pavRepository.findById(new ObjectId(pavId));
+		if (!pavOpt.isPresent()) {
+			return new PagedAnnotationValidatationDataResponse();
+		}		
+		
+		PagedAnnotationValidation pav = pavOpt.get();
+
+		String datasetUri = resourceVocabulary.getDatasetAsResource(pav.getDatasetUuid()).toString();
+		DatasetCatalog dcg = schemaService.asCatalog(pav.getDatasetUuid());
+		String fromClause = schemaService.buildFromClause(dcg);
+		
+		
+    	String onPropertyString = PathElement.onPathStringListAsSPARQLString(pav.getOnProperty());
+		String annfilter = aegService.annotatorFilter("v", pav.getAnnotatorDocumentUuid());
+
+		AnnotationValuesContainer avc = readPage(datasetUri, pav.getMode(), onPropertyString, pav.getAsProperty(), pav.getAnnotatorDocumentUuid(), annfilter, vc, mode, page, fromClause);
+		
+		ObjectId uid = new ObjectId(currentUser.getId());
+		
+		int validatedCount = 0;
+		int addedCount = 0;
+		int acceptedCount = 0;
+		int rejectedCount = 0;
+		int neutralCount = 0;
+		
+		Map<AnnotationEditValue, ValueAnnotation> res = avc.getValueMap();
+		
+		for (Map.Entry<AnnotationEditValue, ValueAnnotation> entry : res.entrySet()) {
+			AnnotationEditValue aev = entry.getKey();
+			ValueAnnotation nva = entry.getValue();
+			
+			Set<ObjectId> set = new HashSet<>();
+			
+			for (ValueAnnotationDetail vad : nva.getDetails()) {
+				Optional<AnnotationEdit> editOpt = null;
+				if (aev.getIri() != null) {
+					editOpt = annotationEditRepository.findByAnnotationEditGroupIdAndIriValueAndAnnotationValueAndStartAndEnd(pav.getAnnotationEditGroupId(), aev.getIri(), vad.getValue(), vad.getStart() != null ? vad.getStart() : -1, vad.getEnd() != null ? vad.getEnd() : -1);
+				} else {
+					editOpt = annotationEditRepository.findByAnnotationEditGroupIdAndLiteralValueAndAnnotationValueAndStartAndEnd(pav.getAnnotationEditGroupId(), aev.getLexicalForm(), aev.getLanguage(), aev.getDatatype(), vad.getValue(), vad.getStart() != null ? vad.getStart() : -1, vad.getEnd() != null ? vad.getEnd() : -1 );
+				}
+
+				// no added annotation should appear here
+				if (editOpt.isPresent()) {
+					AnnotationEdit edit = editOpt.get();
+
+					vad.setId(edit.getId().toString()); // missing from repaginate view
+					
+					if (edit.getAcceptedByUserId().size() > 0 || edit.getRejectedByUserId().size() > 0) {
+						validatedCount += vad.getCount();
+						
+						if (edit.getAcceptedByUserId().size() > edit.getRejectedByUserId().size()) {
+							acceptedCount += vad.getCount();
+						}  else if (edit.getAcceptedByUserId().size() < edit.getRejectedByUserId().size()) {
+							rejectedCount += vad.getCount();
+						} else {
+							neutralCount += vad.getCount();
+						}
+						
+					}
+					
+					set.add(edit.getId());
+					
+					if (edit.getAcceptedByUserId().contains(uid)) {
+						vad.setState(AnnotationEditType.ACCEPT);
+						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
+						vad.setOthersRejected(edit.getRejectedByUserId().size());
+						
+						vad.setSelectedTarget(edit.getTargetAcceptPropertyForUserId(uid));
+						
+					} else if (edit.getRejectedByUserId().contains(uid)) {
+						vad.setState(AnnotationEditType.REJECT);
+						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
+						vad.setOthersRejected(edit.getRejectedByUserId().size());
+						
+//						vad.setSelectedTarget(edit.getMostAcceptedTargetAcceptProperty());
+						
+					} else if (edit.getAddedByUserId().contains(uid)) { // should not allow addition of existing annotation
+//						vad.setState(AnnotationEditType.ADD);
+//						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
+//						vad.setOthersRejected(edit.getRejectedByUserId().size());
+						
+						vad.setSelectedTarget(edit.getTargetAcceptPropertyForUserId(uid));
+						
+					} else {
+						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
+						vad.setOthersRejected(edit.getRejectedByUserId().size());
+						
+//						vad.setSelectedTarget(edit.getMostAcceptedTargetAcceptProperty());
+						
+					}
+					
+					vad.setOthersTarget(edit.getMostAcceptedTargetAcceptProperty());
+					
+					if (edit.getAddedByUserId().size() > 0) {
+						vad.setManual(true);
+						
+						vad.setReferences(edit.getReferences());
+					}
+
+				}
+			}
+
+			if (!ignoreAdded) {
+				List<AnnotationEdit> edits = null;
+				if (aev.getIri() != null) {
+					edits = annotationEditRepository.findByAnnotationEditGroupIdAndIriValueAndAdded(pav.getAnnotationEditGroupId(), aev.getIri());
+				} else {
+					edits = annotationEditRepository.findByAnnotationEditGroupIdAndLiteralValueAndAdded(pav.getAnnotationEditGroupId(), aev.getLexicalForm(), aev.getLanguage(), aev.getDatatype());
+				}
+
+				for (AnnotationEdit edit : edits) {
+					if (set.contains(edit.getId())) {
+						continue;
+					}
+					
+					addedCount += nva.getCount();
+
+					ValueAnnotationDetail vad = new ValueAnnotationDetail();
+					vad.setValue(edit.getAnnotationValue());
+					vad.setStart(edit.getStart() != -1 ? edit.getStart() : null);
+					vad.setEnd(edit.getEnd() != -1 ? edit.getEnd() : null);
+					vad.setCount(nva.getCount());
+					
+					vad.setId(edit.getId().toString());
+
+					if (edit.getAddedByUserId().contains(uid)) {
+						vad.setState(AnnotationEditType.ADD);
+						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
+						vad.setOthersRejected(edit.getRejectedByUserId().size());
+						
+						vad.setSelectedTarget(edit.getTargetAcceptPropertyForUserId(uid));
+					} else if (edit.getAcceptedByUserId().contains(uid)) {
+						vad.setState(AnnotationEditType.ACCEPT);
+						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
+						vad.setOthersRejected(edit.getRejectedByUserId().size());
+						
+						vad.setSelectedTarget(edit.getTargetAcceptPropertyForUserId(uid));
+					} else if (edit.getRejectedByUserId().contains(uid)) {
+						vad.setState(AnnotationEditType.REJECT);
+						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
+						vad.setOthersRejected(edit.getRejectedByUserId().size());
+						
+//						vad.setSelectedTarget(edit.getMostAcceptedTargetAcceptProperty());
+					} else {
+						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
+						vad.setOthersRejected(edit.getRejectedByUserId().size());
+						
+//						vad.setSelectedTarget(edit.getMostAcceptedTargetAcceptProperty());
+					}
+					
+					vad.setOthersTarget(edit.getMostAcceptedTargetAcceptProperty());
+					
+					if (edit.getAddedByUserId().size() > 0) {
+						vad.setManual(true);
+						
+						vad.setReferences(edit.getReferences());
+					}
+
+
+					nva.getDetails().add(vad);
+				}
+			}
+		}		
+		
+		// get page
+		Optional<PagedAnnotationValidationPage> pavpOpt = pavpRepository.findByPagedAnnotationValidationIdAndModeAndPage(pav.getId(), mode, page);
+		PagedAnnotationValidationPage pavp = null;
+		if (!pavpOpt.isPresent()) {
+			pavp = new PagedAnnotationValidationPage();
+			pavp.setPagedAnnotationValidationId(pav.getId());
+			pavp.setAnnotationEditGroupId(pav.getAnnotationEditGroupId());
+			pavp.setMode(mode);
+			pavp.setPage(page);
+			pavp.setAnnotationsCount(avc.getTotalAnnotationsCount());
+			pavp.setValidatedCount(validatedCount);
+			pavp.setUnvalidatedCount(avc.getTotalAnnotationsCount() - validatedCount);
+			pavp.setAddedCount(addedCount);
+			pavp.setAcceptedCount(acceptedCount);
+			pavp.setRejectedCount(rejectedCount);
+			pavp.setNeutralCount(neutralCount);			
+			pavp.setAssigned(true);
+			
+			pavpRepository.save(pavp);
+		} else {
+			pavp = pavpOpt.get();
+		}
+		
+		PagedAnnotationValidatationDataResponse pr = new PagedAnnotationValidatationDataResponse();
+		pr.setId(pav.getId().toString());
+		pr.setData(new ArrayList<>(res.values()));
+		pr.setCurrentPage(page);
+		pr.setMode(mode);
+		pr.setPagedAnnotationValidationId(pavp.getPagedAnnotationValidationId().toString());
+		pr.setPagedAnnotationValidationPageId(pavp.getId().toString());
+		
+		if (mode == ANNOTATED_ONLY) {
+			pr.setTotalPages(pav.getAnnotatedPagesCount());
+		} else {
+			pr.setTotalPages(pav.getNonAnnotatedPagesCount());
+		}
+		
+		return pr;
+    } 
+
+	private PagedAnnotationValidationPage repaginateSimulationView(PagedAnnotationValidation pav, TripleStoreConfiguration vc, AnnotationValidationRequest mode, int page, Set<String> editIds) {
+		
+		String datasetUri = resourceVocabulary.getDatasetAsResource(pav.getDatasetUuid()).toString();
+		DatasetCatalog dcg = schemaService.asCatalog(pav.getDatasetUuid());
+		String fromClause = schemaService.buildFromClause(dcg);
+		
+    	String onPropertyString = PathElement.onPathStringListAsSPARQLString(pav.getOnProperty());
+		String annfilter = aegService.annotatorFilter("v", pav.getAnnotatorDocumentUuid());
+
+		AnnotationValuesContainer avc  = readPage(datasetUri, pav.getMode(), onPropertyString, pav.getAsProperty(), pav.getAnnotatorDocumentUuid(), annfilter, vc, mode, page, fromClause);
+    	
+		int validatedCount = 0;
+		int addedCount = 0;
+		int acceptedCount = 0;
+		int rejectedCount = 0;
+		int neutralCount = 0;
+		
+		for (Map.Entry<AnnotationEditValue, ValueAnnotation> entry : avc.getValueMap().entrySet()) {
+			AnnotationEditValue aev = entry.getKey();
+			ValueAnnotation nva = entry.getValue();
+			
+			Set<ObjectId> set = new HashSet<>();
+			
+			for (ValueAnnotationDetail vad : nva.getDetails()) {
+				Optional<AnnotationEdit> editOpt = null;
+				if (aev.getIri() != null) {
+					editOpt = annotationEditRepository.findByAnnotationEditGroupIdAndIriValueAndAnnotationValueAndStartAndEnd(pav.getAnnotationEditGroupId(), aev.getIri(), vad.getValue(), vad.getStart() != null ? vad.getStart() : -1, vad.getEnd() != null ? vad.getEnd() : -1);
+				} else {
+					editOpt = annotationEditRepository.findByAnnotationEditGroupIdAndLiteralValueAndAnnotationValueAndStartAndEnd(pav.getAnnotationEditGroupId(), aev.getLexicalForm(), aev.getLanguage(), aev.getDatatype(), vad.getValue(), vad.getStart() != null ? vad.getStart() : -1, vad.getEnd() != null ? vad.getEnd() : -1 );
+				}
+				
+				if (editOpt.isPresent()) {
+					AnnotationEdit edit = editOpt.get();
+					
+					if (edit.getAcceptedByUserId().size() > 0 || edit.getRejectedByUserId().size() > 0) {
+						validatedCount += vad.getCount();
+					
+						if (edit.getAcceptedByUserId().size() > edit.getRejectedByUserId().size()) {
+							acceptedCount += vad.getCount();
+						}  else if (edit.getAcceptedByUserId().size() < edit.getRejectedByUserId().size()) {
+							rejectedCount += vad.getCount();
+						} else {
+							neutralCount += vad.getCount();
+						}
+					}
+					
+					set.add(edit.getId());
+					
+					editIds.remove(edit.getId().toString());
+				}
+
+			}
+
+			List<AnnotationEdit> edits = null;
+			if (aev.getIri() != null) {
+				edits = annotationEditRepository.findByAnnotationEditGroupIdAndIriValueAndAdded(pav.getAnnotationEditGroupId(), aev.getIri());
+			} else {
+				edits = annotationEditRepository.findByAnnotationEditGroupIdAndLiteralValueAndAdded(pav.getAnnotationEditGroupId(), aev.getLexicalForm(), aev.getLanguage(), aev.getDatatype());
+			}
+
+			for (AnnotationEdit edit : edits) {
+				if (set.contains(edit.getId())) {
+					continue;
+				}
+				
+				addedCount += nva.getCount();
+
+				editIds.remove(edit.getId().toString());
+			}
+		}		
+
+		PagedAnnotationValidationPage pavp = new PagedAnnotationValidationPage();
+		pavp.setPagedAnnotationValidationId(pav.getId());
+		pavp.setAnnotationEditGroupId(pav.getAnnotationEditGroupId());
+		pavp.setMode(mode);
+		pavp.setPage(page);
+		pavp.setAnnotationsCount(avc.getTotalAnnotationsCount());
+		pavp.setValidatedCount(validatedCount);
+		pavp.setUnvalidatedCount(avc.getTotalAnnotationsCount() - validatedCount);
+		pavp.setAddedCount(addedCount);
+		pavp.setAcceptedCount(acceptedCount);
+		pavp.setRejectedCount(rejectedCount);
+		pavp.setNeutralCount(neutralCount);
+		pavp.setAssigned(false);
+
+		return pavp;
+	}
+
+	
+
 
 
 
@@ -378,7 +1477,7 @@ public class PagedAnnotationValidationService {
 	public UpdateLockedPageResponse updateLockedPageIsAssigned(int page, String pavId, AnnotationValidationRequest mode, boolean isAssigned) {
 		Optional<PagedAnnotationValidationPage> pavpOpt = pavpRepository.findByPagedAnnotationValidationIdAndModeAndPage(new ObjectId(pavId), mode, page);
 		if (!pavpOpt.isPresent()) {
-			System.out.println("not present");
+//			System.out.println("not present");
 			return new UpdateLockedPageResponse(false, null);
 		}
 		PagedAnnotationValidationPage pavp = pavpOpt.get();
@@ -428,7 +1527,7 @@ public class PagedAnnotationValidationService {
 		This function serves the UNANNOTADED_ONLY_SERIAL and ANNOTATED_ONLY_SERIAL PageRequestMode.
 	 */
 
-	public PagedAnnotationValidatationDataResponse getCurrent(UserPrincipal currentUser, VirtuosoConfiguration vc, String pavId, int currentPage, AnnotationValidationRequest mode, PageRequestMode pgMode) {
+	public PagedAnnotationValidatationDataResponse getCurrent(UserPrincipal currentUser, TripleStoreConfiguration vc, String pavId, int currentPage, AnnotationValidationRequest mode, PageRequestMode pgMode) {
 		// try to lock current page to give it back to user
 		PagedAnnotationValidatationDataResponse res;
 		UpdateLockedPageResponse updateRes;
@@ -468,7 +1567,7 @@ public class PagedAnnotationValidationService {
 
 			PagedAnnotationValidation pav = pavOpt.get();
 			ac.software.semantic.model.Dataset ds = datasetRepository.findByUuid(pav.getDatasetUuid()).get();
-			VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+			TripleStoreConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
 
 
 			//number of total pages that exist - must not bypass that!
@@ -477,8 +1576,8 @@ public class PagedAnnotationValidationService {
 //			System.out.println(unannotated_pages+" "+annotated_pages);
 
 			PagedAnnotationValidatationDataResponse res = null;
-			Optional<PagedAnnotationValidationPage> pavpOpt;
-			PagedAnnotationValidationPage pavp;
+//			Optional<PagedAnnotationValidationPage> pavpOpt;
+//			PagedAnnotationValidationPage pavp;
 			UpdateLockedPageResponse updateRes;
 			ObjectId lockId;
 
@@ -647,7 +1746,7 @@ public class PagedAnnotationValidationService {
 		PagedAnnotationValidation pav = pavOpt.get();
 
 		ac.software.semantic.model.Dataset ds = datasetRepository.findByUuid(pav.getDatasetUuid()).get();
-		VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+		TripleStoreConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
 
 		if(!locksService.checkForLockAndRemove(currentUser)) {
 			return new PagedAnnotationValidatationDataResponse("Error on lock deletion. Try again.");
@@ -750,341 +1849,132 @@ public class PagedAnnotationValidationService {
 		return res;
 	}
 
-	public PagedAnnotationValidatationDataResponse view(UserPrincipal currentUser, VirtuosoConfiguration vc, String pavId, AnnotationValidationRequest mode, int page, boolean ignoreAdded) {
-		
-		Optional<PagedAnnotationValidation> pavOpt = pavRepository.findById(new ObjectId(pavId));
-		if (!pavOpt.isPresent()) {
-			return new PagedAnnotationValidatationDataResponse();
-		}		
-		
-		PagedAnnotationValidation pav = pavOpt.get();
-
-		 
-		String datasetUri = SEMAVocabulary.getDataset(pav.getDatasetUuid()).toString();
-    	String onPropertyString = pav.getOnPropertyAsString();
-		String annfilter = AnnotationEditGroup.annotatorFilter("v", pav.getAnnotatorDocumentUuid());
-
-    	List<ValueCount> values = getValuesForPage(vc, datasetUri, onPropertyString, pav.getAsProperty(), pav.getAnnotatorDocumentUuid(), mode, page);
-    	
-		Map<AnnotationEditValue, ValueAnnotation> res = new LinkedHashMap<>();
-
-    	StringBuffer sb = new StringBuffer();
-    	for (ValueCount vct : values) {
-			AnnotationEditValue aev = null;
-    		
-    		if (vct.getValue().isLiteral()) {
-				Literal l = vct.getValue().asLiteral();
-				String lf = l.getLexicalForm();
-				
-				lf = Utils.escapeLiteralNoDoubleQuotes(lf);
-				sb.append(NodeFactory.createLiteralByValue(lf, l.getLanguage(), l.getDatatype()).toString());
-	    		sb.append(" ");
-				
-				aev = new AnnotationEditValue(vct.getValue().asLiteral());
-			} else {
-				//ignore URI values. They should not be returned by getValuesForPage 
-				
-//				sb.append("<" + vc.getValue().toString() + ">");
-//	    		sb.append(" ");
-
-//				aev = new AnnotationEditValue(vc.getValue().asResource());
-			}
-    		
-    		if (aev != null) {
-				ValueAnnotation va = new ValueAnnotation();
-				va.setOnValue(aev);
-				va.setCount(vct.getCount()); // the number of appearances of the value
-				
-				res.put(aev, va);
-    		}
-    	}
-    	
-    	String valueString = sb.toString();
-    	
-		String sparql = null;
-		
-		String graph = 
-			"GRAPH <" + pav.getAsProperty() + "> { " + 
-		    "  ?v a <" + OAVocabulary.Annotation + "> ; " + 
-	        "     <" + OAVocabulary.hasTarget + "> ?r . " + 
-		    annfilter +
-		    "  ?r <" + SOAVocabulary.onProperty + "> \"" + onPropertyString + "\" ; " + 
-		    "     <" + SOAVocabulary.onValue + "> ?value ; " + 
-		    "     <" + OAVocabulary.hasSource + "> ?s . " + 
-		    " { ?v <" + OAVocabulary.hasBody + "> ?t . FILTER (!isBlank(?t)) } UNION " + 
-		    " { ?v <" + OAVocabulary.hasBody + "> [ " + 
-		    " a <" + OWLTime.DateTimeInterval + "> ; " + 
-		    " <" + OWLTime.intervalStartedBy + ">|<" + OWLTime.hasBeginning + "> ?t ; " + 
-		    " <" + OWLTime.intervalFinishedBy + ">|<" + OWLTime.hasEnd + "> ?ie ]  }  " + 
-		    " OPTIONAL { ?r <" + SOAVocabulary.start + "> ?start }  " + 
-		    " OPTIONAL { ?r <" + SOAVocabulary.end + "> ?end } } ";
-		    		
-		if (mode == ANNOTATED_ONLY) {
-			sparql = 
-					"SELECT distinct ?value ?t ?ie ?start ?end  (count(*) AS ?count)" + 
-		            "WHERE { " + 
-					"  GRAPH <" + datasetUri + "> { " + 
-		            "    ?s " + onPropertyString + " ?value }  " + 
-                       graph +  
-                    "  VALUES ?value { " + valueString  + " } " +                       
-		            "} " + 
-		            "GROUP BY ?t ?ie ?value ?start ?end " +
-					"ORDER BY DESC(?count) ?value ?start ?end";
-		} else if (mode == UNANNOTATED_ONLY) {
-			sparql = 
-					"SELECT distinct ?value (count(*) AS ?count) " + 
-			        "WHERE { " + 
-		            "  GRAPH <" + datasetUri + "> { " + 
-					"    ?s " + onPropertyString + " ?value }  " + 
-		            "  FILTER NOT EXISTS { " + 
-					"    GRAPH <" + pav.getAsProperty() + "> { " + 
-					"      ?v a <" + OAVocabulary.Annotation + "> ; " + 
-		            "         <" + OAVocabulary.hasTarget + "> ?r . " + 
-		            annfilter +
-					"      ?r <" + SOAVocabulary.onProperty + "> \"" + onPropertyString + "\" ; " + 
-					"         <" + SOAVocabulary.onValue + "> ?value ; " + 
-					"         <" + OAVocabulary.hasSource + "> ?s  } } " +
-					"  VALUES ?value { " + valueString  + " } " +
-					"} " +
-					"GROUP BY ?value  " +
-			        "ORDER BY DESC(?count) ?value ";
-		}    	
-		
-//    	System.out.println(sparql);
-//    	System.out.println(QueryFactory.create(sparql, Syntax.syntaxSPARQL_11));
-    	
-		int totalAnnotationsCount = 0;
-		if (valueString.length() > 0) {
-			try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(sparql, Syntax.syntaxSPARQL_11))) {
-			
-				ResultSet rs = qe.execSelect();
-				
-				while (rs.hasNext()) {
-					QuerySolution sol = rs.next();
-					
-					RDFNode value = sol.get("value");
-					
-					String ann = sol.get("t") != null ? sol.get("t").toString() : null;
-					String ie = sol.get("ie") != null ? sol.get("ie").toString() : null;
-
-					int start = sol.get("start") != null ? sol.get("start").asLiteral().getInt() : -1;
-					int end = sol.get("end") != null ? sol.get("end").asLiteral().getInt() : -1;
-					
-					int count = sol.get("count").asLiteral().getInt();
-					
-					AnnotationEditValue aev = null;
-					if (value.isResource()) {
-						aev = new AnnotationEditValue(value.asResource());
-					} else if (value.isLiteral()) {
-						aev = new AnnotationEditValue(value.asLiteral());
-					}
-					
-					totalAnnotationsCount += count;
-					
-					ValueAnnotation va = res.get(aev);
-					if (va != null && ann != null) {
-						ValueAnnotationDetail vad = new ValueAnnotationDetail();
-						vad.setValue(ann);
-						vad.setValue2(ie);
-						vad.setStart(start);
-						vad.setEnd(end);
-						vad.setCount(count); // the number of appearances of the annotation 
-						                     // it is different than the number of appearances of the value if multiple annotations exist on the same value
-						
-						va.getDetails().add(vad);
-					}
-				}
-
-			}
-		}
-		
-		ObjectId uid = new ObjectId(currentUser.getId());
-		
-		int validatedCount = 0;
-		int addedCount = 0;
-		int acceptedCount = 0;
-		int rejectedCount = 0;
-		int neutralCount = 0;
-				
-		for (Map.Entry<AnnotationEditValue, ValueAnnotation> entry : res.entrySet()) {
-			AnnotationEditValue aev = entry.getKey();
-			ValueAnnotation nva = entry.getValue();
-			
-			Set<ObjectId> set = new HashSet<>();
-			
-			for (ValueAnnotationDetail vad : nva.getDetails()) {
-				Optional<AnnotationEdit> editOpt = null;
-				if (aev.getIri() != null) {
-					editOpt = annotationEditRepository.findByAnnotationEditGroupIdAndIriValueAndAnnotationValueAndStartAndEnd(pav.getAnnotationEditGroupId(), aev.getIri(), vad.getValue(), vad.getStart(), vad.getEnd());
-				} else {
-					editOpt = annotationEditRepository.findByAnnotationEditGroupIdAndLiteralValueAndAnnotationValueAndStartAndEnd(pav.getAnnotationEditGroupId(), aev.getLexicalForm(), aev.getLanguage(), aev.getDatatype(), vad.getValue(), vad.getStart(), vad.getEnd());
-				}
-				
-				// no added annotation should appear here
-				if (editOpt.isPresent()) {
-					AnnotationEdit edit = editOpt.get();
-
-					vad.setId(edit.getId().toString());
-					
-					if (edit.getAcceptedByUserId().size() > 0 || edit.getRejectedByUserId().size() > 0) {
-						validatedCount += vad.getCount();
-						
-						if (edit.getAcceptedByUserId().size() > edit.getRejectedByUserId().size()) {
-							acceptedCount += vad.getCount();
-						}  else if (edit.getAcceptedByUserId().size() < edit.getRejectedByUserId().size()) {
-							rejectedCount += vad.getCount();
-						} else {
-							neutralCount += vad.getCount();
-						}
-						
-					}
-					
-					set.add(edit.getId());
-					
-					if (edit.getAcceptedByUserId().contains(uid)) {
-						vad.setState(AnnotationEditType.ACCEPT);
-						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
-						vad.setOthersRejected(edit.getRejectedByUserId().size());
-					} else if (edit.getRejectedByUserId().contains(uid)) {
-						vad.setState(AnnotationEditType.REJECT);
-						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
-						vad.setOthersRejected(edit.getRejectedByUserId().size());
-					} else if (edit.getAddedByUserId().contains(uid)) { // should not allow addition of existing annotation
-//						vad.setState(AnnotationEditType.ADD);
-//						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
-//						vad.setOthersRejected(edit.getRejectedByUserId().size());
-					} else {
-						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
-						vad.setOthersRejected(edit.getRejectedByUserId().size());
-					}
-				}
-			}
-
-			if (!ignoreAdded) {
-				List<AnnotationEdit> edits = null;
-				if (aev.getIri() != null) {
-					edits = annotationEditRepository.findByAnnotationEditGroupIdAndIriValueAndAdded(pav.getAnnotationEditGroupId(), aev.getIri());
-				} else {
-					edits = annotationEditRepository.findByAnnotationEditGroupIdAndLiteralValueAndAdded(pav.getAnnotationEditGroupId(), aev.getLexicalForm(), aev.getLanguage(), aev.getDatatype());
-				}
-
-				for (AnnotationEdit edit : edits) {
-					if (set.contains(edit.getId())) {
-						continue;
-					}
-					
-					addedCount += nva.getCount();
-
-					ValueAnnotationDetail vad = new ValueAnnotationDetail();
-					vad.setValue(edit.getAnnotationValue());
-					vad.setStart(edit.getStart());
-					vad.setEnd(edit.getEnd());
-					vad.setCount(nva.getCount());
-					
-					vad.setId(edit.getId().toString());
-
-					if (edit.getAddedByUserId().contains(uid)) {
-						vad.setState(AnnotationEditType.ADD);
-						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
-						vad.setOthersRejected(edit.getRejectedByUserId().size());
-					} else if (edit.getAcceptedByUserId().contains(uid)) {
-						vad.setState(AnnotationEditType.ACCEPT);
-						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
-						vad.setOthersRejected(edit.getRejectedByUserId().size());
-					} else if (edit.getRejectedByUserId().contains(uid)) {
-						vad.setState(AnnotationEditType.REJECT);
-						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
-						vad.setOthersRejected(edit.getRejectedByUserId().size());
-					} else {
-						vad.setOthersAccepted(edit.getAcceptedByUserId().size());
-						vad.setOthersRejected(edit.getRejectedByUserId().size());
-					}
-
-					nva.getDetails().add(vad);
-				}
-			}
-		}		
-		
-		// get page
-		Optional<PagedAnnotationValidationPage> pavpOpt = pavpRepository.findByPagedAnnotationValidationIdAndModeAndPage(new ObjectId(pavId), mode, page);
-		PagedAnnotationValidationPage pavp = null;
-		if (!pavpOpt.isPresent()) {
-			pavp = new PagedAnnotationValidationPage();
-			pavp.setPagedAnnotationValidationId(new ObjectId(pavId));
-			pavp.setAnnotationEditGroupId(pav.getAnnotationEditGroupId());
-			pavp.setMode(mode);
-			pavp.setPage(page);
-			pavp.setAnnotationsCount(totalAnnotationsCount);
-			pavp.setValidatedCount(validatedCount);
-			pavp.setUnvalidatedCount(totalAnnotationsCount - validatedCount);
-			pavp.setAddedCount(addedCount);
-			pavp.setAcceptedCount(acceptedCount);
-			pavp.setRejectedCount(rejectedCount);
-			pavp.setNeutralCount(neutralCount);			
-			pavp.setAssigned(true);
-			
-			pavpRepository.save(pavp);
-		} else {
-			pavp = pavpOpt.get();
-		}
-		
-		PagedAnnotationValidatationDataResponse pr = new PagedAnnotationValidatationDataResponse();
-		pr.setId(pav.getId().toString());
-		pr.setData(new ArrayList<>(res.values()));
-		pr.setCurrentPage(page);
-		pr.setMode(mode);
-		pr.setPagedAnnotationValidationId(pavp.getPagedAnnotationValidationId().toString());
-		pr.setPagedAnnotationValidationPageId(pavp.getId().toString());
-		
-		if (mode == ANNOTATED_ONLY) {
-			pr.setTotalPages(pav.getAnnotatedPagesCount());
-		} else {
-			pr.setTotalPages(pav.getNonAnnotatedPagesCount());
-		}
-		
-		return pr;
-    } 
 	
-	public boolean endValidation(String pavId) {
-		Optional<PagedAnnotationValidation> pavOpt = pavRepository.findById(new ObjectId(pavId));
-		if (!pavOpt.isPresent()) {
-			return false;
+	public void stopValidation(PagedAnnotationValidationContainer pavc) throws Exception {
+
+		pavc.save(ipavc -> {
+			PagedAnnotationValidation ipav = ((PagedAnnotationValidationContainer)ipavc).getPagedAnnotationValidation();
+			
+			ipav.setLifecycle(PagedAnnotationValidationState.STOPPED);
+			ipav.setLifecycleCompletedAt(new Date());
+			ipav.setComplete(true);
+		});
+		
+	}
+	
+	@Async("pagedAnnotationValidationExecutor")
+	public ListenableFuture<Date> resumeValidation(TaskDescription tdescr, PagedAnnotationValidationContainer pavc, WebSocketService wsService) throws TaskFailureException {
+		GenericMonitor pm = (GenericMonitor)tdescr.getMonitor();
+		
+		PagedAnnotationValidation pav = pavc.getPagedAnnotationValidation();
+
+		AnnotationEditGroup aeg = aegRepository.findById(pav.getAnnotationEditGroupId()).get();
+
+		try {
+			
+			if (pav.getLifecycle() != PagedAnnotationValidationState.STARTED) {
+				
+				Date pavChange = pav.getLifecycleCompletedAt();
+				Date aegChange = aeg.getLastPublicationStateChange();
+				
+//				System.out.println("PAV DATE " + pavChange);
+//				System.out.println("AEG DATE " + aegChange);
+				
+				if (aegChange == null || pavChange == null || // legacy
+						aegChange.after(pavChange)) {
+
+					pav.setLifecycle(PagedAnnotationValidationState.RESUMING);
+					pav.setResumingStartedAt(new Date());
+
+					pm.sendMessage(new LifecycleNotificationObject(pav.getLifecycle(), pavc), pav.getResumingStartedAt());
+					
+					pavRepository.save(pav);
+					
+					recreatePagedAnnotationValidation(pavc.getCurrentUser(), pav);
+				}
+	
+				pav.setLifecycle(PagedAnnotationValidationState.STARTED);
+				if (pav.getLifecycleStartedAt() == null) {
+					pav.setLifecycleStartedAt(pav.getResumingStartedAt()); // for old entries with not date
+				}
+				pav.setResumingStartedAt(null);
+				pav.setLifecycleCompletedAt(null);
+				pav.setComplete(false);
+				
+				pavRepository.save(pav);
+
+				pm.complete();
+				
+				pm.sendMessage(new LifecycleNotificationObject(pav.getLifecycle(), pavc), pav.getLifecycleStartedAt());
+			}
+			
+			return new AsyncResult<>(new Date());
+		} catch (Exception ex) {
+			ex.printStackTrace();
+
+			pm.complete();
+			
+			pav.setLifecycle(PagedAnnotationValidationState.RESUMING_FAILED);
+			pav.setLifecycleCompletedAt(null);
+			pav.setComplete(false);
+
+			pavRepository.save(pav);
+
+			pm.sendMessage(new LifecycleNotificationObject(pav.getLifecycle(), pavc));			
+
+//			return new AsyncResult<>(false);
+			throw new TaskFailureException(ex, new Date());
 		}
-		PagedAnnotationValidation pav = pavOpt.get();
-		pav.setComplete(true);
-		pavRepository.save(pav);
-		return true;
 	}
 
-	public List<DatasetProgressResponse> getDatasetProgress(UserPrincipal currentUser, String uuid) {
+	public List<DatasetProgressResponse> getDatasetProgress(UserPrincipal currentUser, String datasetUuid) {
 		List<DatasetProgressResponse> res = new ArrayList<>();
 		DatasetProgressResponse dataRes;
 		ProgressResponse progRes;
 
-		List<PagedAnnotationValidation> datasetValidations = pavRepository.findByDatasetUuid(uuid);
-		for (PagedAnnotationValidation val : datasetValidations) {
+		List<PagedAnnotationValidation> datasetValidations = pavRepository.findByDatasetUuid(datasetUuid);
+		for (PagedAnnotationValidation pav : datasetValidations) {
 			dataRes = new DatasetProgressResponse();
-			dataRes.setValidationId(val.getId().toString());
-			dataRes.setPropertyName(val.getOnPropertyAsString());
-			dataRes.setAsProperty(val.getAsProperty());
+			dataRes.setValidationId(pav.getId().toString());
+//			dataRes.setPropertyName(val.getOnPropertyAsString());
+			dataRes.setPropertyName(vocabularyService.onPathStringListAsPrettyString(pav.getOnProperty()));
+			dataRes.setPropertyPath(PathElement.onPathElementListAsStringListInverse(pav.getOnProperty(), vocc));
+			dataRes.setAsProperty(pav.getAsProperty());
 
-			progRes = getProgress(currentUser, val.getId().toString());
+			progRes = getProgress(currentUser, pav.getId().toString());
+			
+//			System.out.println(datasetUuid+ " " +  pav.getId() + " " + vocabularyService.onPathStringListAsPrettyString(pav.getOnProperty()) + " " + progRes.getTotalValidations() + " " + progRes.getTotalAnnotations() );
 
 			//round the result
 			try {
 				BigDecimal bd = BigDecimal.valueOf((1.0 * progRes.getTotalValidations() / progRes.getTotalAnnotations()) * 100);
 				bd = bd.setScale(2, RoundingMode.HALF_UP);
 				dataRes.setProgress(bd.doubleValue());
-			}
-			catch(Exception e) {
+			} catch(Exception e) {
 				dataRes.setProgress(0);
 			}
+			
 			dataRes.setTotalAdded(progRes.getTotalAdded());
 			dataRes.setTotalAnnotations(progRes.getTotalAnnotations());
 			dataRes.setTotalValidations(progRes.getTotalValidations());
 			dataRes.setTotalAccepted(progRes.getTotalAccepted());
 			dataRes.setTotalRejected(progRes.getTotalRejected());
 			dataRes.setTotalNeutral(progRes.getTotalNeutral());
+			
+			dataRes.setAnnotatedPagesCount(pav.getAnnotatedPagesCount());
+			
+			dataRes.setLocked(pavplRepository.findByAnnotationEditGroupId(pav.getAnnotationEditGroupId()).size() > 0);
+			
+			boolean published = false;
+        	for (TripleStoreConfiguration vc : virtuosoConfigurations.values()) { // currently support only one publication site        	
+	        	PublishState ppss = pav.checkPublishState(vc.getId()); // @FIXED FROM .getDatabaseId();
+	        	if (ppss != null) {
+	    	    	published = ppss.getPublishState() == DatasetState.PUBLISHED;
+	        	}
+        	}
+        	
+        	dataRes.setActive(pav.getLifecycle() == PagedAnnotationValidationState.STARTED && !published);
+        	
 			res.add(dataRes);
 		}
 
@@ -1092,559 +1982,340 @@ public class PagedAnnotationValidationService {
 	}
 	
 
-	//does not work needs updating with OutputHandler
-//	public boolean execute(UserPrincipal currentUser, String pavId, ApplicationEventPublisher applicationEventPublisher) throws Exception {
-//
-//		Optional<PagedAnnotationValidation> odoc = pavRepository.findById(pavId);
-//	    if (!odoc.isPresent()) {
-//	    	return false;
-//	    }
-//    	
-//	    PagedAnnotationValidation pav = odoc.get();
-//	    
-//	    Date executeStart = new Date(System.currentTimeMillis());
-//	    
-//    	ExecuteState es = pav.getExecuteState(fileSystemConfiguration.getId());
-//    	
-//    	String datasetFolder = fileSystemConfiguration.getUserDataFolder(currentUser) + annotationsFolder + pav.getDatasetUuid() + "/";
-//    	
-//		// Clearing old files
-//		if (es.getExecuteState() == MappingState.EXECUTED) {
-//			for (int i = 0; i < es.getExecuteShards(); i++) {
-//				(new File(datasetFolder + pav.getUuid() + "_add" + (i == 0 ? "" : "_#" + i) + ".trig")).delete();
-//			}
-//			new File(datasetFolder + pav.getUuid() + "_add_catalog.trig").delete();
-//			new File(datasetFolder + pav.getUuid() + "_delete.trig").delete();
-//			new File(datasetFolder + pav.getUuid() + "_delete_catalog.trig").delete();
-//		}
-//		
-//		es.setExecuteState(MappingState.EXECUTING);
-//		es.setExecuteStartedAt(executeStart);
-//		es.setExecuteShards(0);
-//		es.setCount(0);
-//		
-//		pavRepository.save(pav);
-//
-//		if (!new File(datasetFolder).exists()) {
-//			new File(datasetFolder).mkdir();
-//		}
-//		
-//		try (FileSystemOutputHandler outhandler = new FileSystemOutputHandler(
-//				datasetFolder, pav.getUuid() + "_add",
-//				shardSize);
-//				Writer delete = new OutputStreamWriter(new FileOutputStream(new File(datasetFolder + pav.getUuid() + "_delete.trig"), false), StandardCharsets.UTF_8);
-//				Writer deleteCatalog = new OutputStreamWriter(new FileOutputStream(new File(datasetFolder + pav.getUuid() + "_delete_catalog.trig"), false), StandardCharsets.UTF_8)				
-//				) {
-//			
-//			Executor exec = new Executor(outhandler, safeExecute);
-//			exec.keepSubjects(true);
-//			
-//			try (ExecuteMonitor em = new ExecuteMonitor("annotation-edit", pavId, null, applicationEventPublisher)) {
-//				exec.setMonitor(em);
-//				
-//				String d2rml = env.getProperty("validator.paged-add.d2rml"); 
-//				InputStream inputStream = resourceLoader.getResource("classpath:"+ d2rml).getInputStream();
-//				D2RMLModel rmlMapping = D2RMLModel.readFromString(new String(FileCopyUtils.copyToByteArray(inputStream), StandardCharsets.UTF_8));
-//
-//				Dataset ds2 = DatasetFactory.create();
-//				Model deleteModel2 = ds2.getDefaultModel();
-//		
-//				String onPropertyString = AnnotationEditGroup.onPropertyListAsString(pav.getOnProperty());
-//				String annfilter = AnnotationEditGroup.annotatorFilter("v", pav.getAnnotatorDocumentUuid());
-//
-//				for (AnnotationEdit edit :  annotationEditRepository.findByPagedAnnotationValidationId(new ObjectId(pavId))) {
-//					
-////					System.out.println(edit.getEditType() + " " + edit.getAnnotationValue());
-//					
-//					if (edit.getEditType() == AnnotationEditType.ADD) {
-//						
-//						Map<String, Object> params = new HashMap<>();
-//						params.put("iigraph", SEMAVocabulary.getDataset(pav.getDatasetUuid()).toString());
-//						params.put("iiproperty", onPropertyString);
-//						params.put("iivalue", edit.getOnValue().toString());
-//						params.put("iiannotation", edit.getAnnotationValue());
-//						params.put("iirdfsource", virtuosoConfiguration.getSparqlEndpoint());
-//						params.put("iiconfidence", "1");
-//						params.put("iiannotator", SEMAVocabulary.getAnnotationValidator(pav.getUuid()));
-//
-////						System.out.println(edit.getOnValue().toString());
-//						exec.partialExecute(rmlMapping, params);
-//						
-//					} else if (edit.getEditType() == AnnotationEditType.REJECT) {
-//	
-////						System.out.println(edit.getOnValue().toString());
-//				    	String sparql = 
-//				    			"CONSTRUCT { " + 
-//					            "  ?annId ?p1 ?o1 ." + 
-//					            "  ?o1 ?p2 ?o2 .  " +  
-//		     			        "} WHERE { " + 
-//		    			        "  GRAPH <" + pav.getAsProperty() + "> { " + 
-//							    "   ?v a <" + OAVocabulary.Annotation + "> ?annId . " + 
-//		    			        "   ?annId <" + OAVocabulary.hasTarget + "> ?target . " + 
-//							    annfilter +
-//		    			        "   ?target  <" + SOAVocabulary.onProperty + "> \"" + onPropertyString + "\" ; " + 
-//		    			        "            <" + SOAVocabulary.onValue + "> " + edit.getOnValue().toString() + " ; " +
-//		    			        "            <" + OAVocabulary.hasSource + "> ?s  . " +
-//		    		            "   ?annId ?p1 ?o1 . " +
-//		    		            "   OPTIONAL { ?o1 ?p2 ?o2 } } . " +	    			        
-//		    			        " GRAPH <" + SEMAVocabulary.getDataset(pav.getDatasetUuid()).toString() + "> { " +
-//		    			        "  ?s " + onPropertyString + " " + edit.getOnValue().toString() + " } " +
-//		                        " GRAPH <" + SEMAVocabulary.annotationGraph.toString() + "> { " +
-//		                        "    ?adocid <http://purl.org/dc/terms/hasPart> ?annId . } " +		    			        
-//		    			        "}";
-//		    	
-//				    	Writer sw = new StringWriter();
-//				    	
-////				    	System.out.println(QueryFactory.create(sparql, Syntax.syntaxARQ));
-//				    	
-//				    	try (QueryExecution qe = QueryExecutionFactory.sparqlService(virtuosoConfiguration.getSparqlEndpoint(), QueryFactory.create(sparql, Syntax.syntaxARQ))) {
-//					    	Model model = qe.execConstruct();
-//					    	model.setNsPrefixes(new HashMap<>());
-//					    	
-//							RDFDataMgr.write(sw, model, RDFFormat.JSONLD_EXPAND_FLAT) ;
-//				    	}
-//				    	
-//						Dataset ds = DatasetFactory.create();
-//						Model deleteModel = ds.getDefaultModel();
-//	
-//						deleteModel.read(new StringReader(sw.toString()), null, "JSON-LD");
-//	//	
-//						RDFDataMgr.write(delete, deleteModel, RDFFormat.TRIG);
-//						delete.write("\n");
-//						
-//						String sparql2 = 
-//				    			"CONSTRUCT { " + 
-//					            "  ?adocid <http://purl.org/dc/terms/hasPart> ?annId . " +
-//		     			        "} WHERE { " + 
-//		    			        "  GRAPH <" + pav.getAsProperty() + "> { " + 
-//							    "   ?v a <" + OAVocabulary.Annotation + "> ?annId . " + 
-//		    			        "   ?annId <" + OAVocabulary.hasTarget + "> [ " + 
-//							    annfilter +
-//		    			        "     <" + SOAVocabulary.onProperty + "> \"" + onPropertyString + "\" ; " + 
-//		    			        "     <" + SOAVocabulary.onValue + "> " + edit.getOnValue().toString() + " ; " +
-//		    			        "     <" + OAVocabulary.hasSource + "> ?s ] . " +
-//		    		            "  } . " +	    			        
-//		    			        " GRAPH <" + SEMAVocabulary.getDataset(pav.getDatasetUuid()).toString() + "> { " +
-//		    			        "  ?s " + onPropertyString + " " + edit.getOnValue().toString() + " } " +
-//		                        " GRAPH <" + SEMAVocabulary.annotationGraph.toString() + "> { " +
-//		                        "    ?adocid <http://purl.org/dc/terms/hasPart> ?annId . } " +		    			        
-//		    			        "}";				    					
-//	
-//				    	Writer sw2 = new StringWriter();
-//	
-//				    	try (QueryExecution qe2 = QueryExecutionFactory.sparqlService(virtuosoConfiguration.getSparqlEndpoint(), QueryFactory.create(sparql2, Syntax.syntaxARQ))) {
-//					    	Model model2 = qe2.execConstruct();
-//					    	model2.setNsPrefixes(new HashMap<>());
-//					    	
-////					    	System.out.println(model2);
-//					    	
-//							RDFDataMgr.write(sw2, model2, RDFFormat.JSONLD_EXPAND_FLAT) ;
-//				    	}
-//				    	
-//						deleteModel2.read(new StringReader(sw2.toString()), null, "JSON-LD");
-//		    		}
-//					
-//				}
-//				exec.completeExecution();
-//					
-//				RDFDataMgr.write(deleteCatalog, deleteModel2, RDFFormat.TRIG);
-//	//			deleteCatalog.write("\n");
-//		
-//				String asetId = UUID.randomUUID().toString();
-//		    	
-//				Set<Resource> subjects = exec.getSubjects();
-//				
-//	        	try (Writer sw = new OutputStreamWriter(new FileOutputStream(new File(datasetFolder + pav.getUuid() + "_add_catalog.trig"), false), StandardCharsets.UTF_8)) {
-//	//	        		sw.write("<" + SEMAVocabulary.getDataset(aeg.getDatasetUuid()).toString() + ">\n");
-//	        		sw.write("<" + SEMAVocabulary.getAnnotationSet(asetId).toString() + ">\n");
-//	        		sw.write("        <http://purl.org/dc/terms/hasPart>\n" );
-//	        		sw.write("                " );
-//	        		int c = 0;
-//	        		for (Resource r : subjects) {
-//	        			if (c++ > 0) {
-//	        				sw.write(" , ");
-//	        			}
-//	        			sw.write("<" + r.getURI() + ">");
-//	        		}
-//	        		sw.write(" .");
-//	    		}
-//	        	
-//				Date executeFinish = new Date(System.currentTimeMillis());
-//					
-//				es.setExecuteCompletedAt(executeFinish);
-//				es.setExecuteState(MappingState.EXECUTED);
-//				es.setExecuteShards(outhandler.getShards());
-////				es.setCount(outhandler.getTotalItems());
-//				es.setCount(subjects.size());
-//					
-//				pavRepository.save(pav);
-//		
-//				SSEController.send("edits", applicationEventPublisher, this, new NotificationObject("execute",
-//						MappingState.EXECUTED.toString(), pavId, null, executeStart, executeFinish, subjects.size()));
-//
-//				logger.info("Annotation edits executed -- id: " + pavId + ", shards: " + outhandler.getShards());
-//
-////				try {
-////					zipExecution(currentUser, adoc, outhandler.getShards());
-////				} catch (Exception ex) {
-////					ex.printStackTrace();
-////					
-////					logger.info("Zipping annotator execution failed -- id: " + id);
-////				}
-//				
-//				return true;
-//				
-//			} catch (Exception ex) {
-//				ex.printStackTrace();
-//				
-//				logger.info("Annotation edits failed -- id: " + pavId);
-//				
-//				exec.getMonitor().currentConfigurationFailed();
-//
-//				throw ex;
-//			}
-//		} catch (Exception ex) {
-//			ex.printStackTrace();
-//
-//			es.setExecuteState(MappingState.EXECUTION_FAILED);
-//
-//			SSEController.send("edits", applicationEventPublisher, this,
-//					new NotificationObject("execute", MappingState.EXECUTION_FAILED.toString(), pavId, null, null, null));
-//
-//			pavRepository.save(pav);
-//
-//			return false;
-//		}
-//	}
+	@Override
+	@Async("pagedAnnotationValidationExecutor")
+	public ListenableFuture<Date> execute(TaskDescription tdescr, WebSocketService wsService) throws TaskFailureException {
+		ExecuteMonitor em = (ExecuteMonitor)tdescr.getMonitor();
+		
+		PagedAnnotationValidationContainer pavc = (PagedAnnotationValidationContainer)tdescr.getContainer();
+		TripleStoreConfiguration vc = pavc.getDatasetTripleStoreVirtuosoConfiguration();
 
-	public boolean executeNoDelete(UserPrincipal currentUser, String id, ApplicationEventPublisher applicationEventPublisher) throws Exception {
+		try {
+		    Date executeStart = new Date(System.currentTimeMillis());
+			
+			serviceUtils.clearExecution(pavc);
 
-		Optional<PagedAnnotationValidation> odoc = pavRepository.findById(id);
-	    if (!odoc.isPresent()) {
-	    	logger.info("Paged Annotation Validation " + id + " not found");
-	    	return false;
-	    }
-    	
-	    PagedAnnotationValidation pav = odoc.get();
-		ac.software.semantic.model.Dataset ds = datasetRepository.findByUuid(pav.getDatasetUuid()).get();
-		VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+			pavc.save(ipavc -> {	
+				MappingExecuteState ies = ((PagedAnnotationValidationContainer)ipavc).getPagedAnnotationValidation().getExecuteState(fileSystemConfiguration.getId());
 
-	    
-	    Date executeStart = new Date(System.currentTimeMillis());
-	    
-    	ExecuteState es = pav.getExecuteState(fileSystemConfiguration.getId());
-    	
-    	String datasetFolder = fileSystemConfiguration.getUserDataFolder(currentUser) + annotationsFolder + pav.getDatasetUuid() + "/";
-    	File datasetFolderFile = new File(datasetFolder);
-    	
-		if (!datasetFolderFile.exists()) {
-			datasetFolderFile.mkdir();
+				ies.setExecuteState(MappingState.EXECUTING);
+				ies.setExecuteStartedAt(executeStart);
+				ies.setExecuteShards(0);
+				ies.setCount(0);
+				ies.clearMessages();
+			});
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			throw new TaskFailureException(ex, new Date());
 		}
 
-		// Clearing old files
-//		if (es.getExecuteState() == MappingState.EXECUTED) {
-			try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(datasetFolderFile.toPath(), pav.getUuid() + "_*")) {
-		        for (final Path path : directoryStream) {
-		            Files.delete(path);
-		        }
-		    } catch (final Exception e) { 
-		    	e.printStackTrace();
-		    }
-//		}
 		
-		es.setExecuteState(MappingState.EXECUTING);
-		es.setExecuteStartedAt(executeStart);
-		es.setExecuteShards(0);
-		es.setCount(0);
+		logger.info("Paged Annotation Validation " + pavc.getPrimaryId() + " starting");
 		
-		pavRepository.save(pav);
+		em.sendMessage(new ExecuteNotificationObject(pavc));
 		
-		logger.info("Paged Annotation Validation " + id + " starting");
-		
-		try (FileSystemOutputHandler deleteHandler = new FileSystemOutputHandler(datasetFolder, pav.getUuid(), shardSize);
-//				Writer delete = new OutputStreamWriter(new FileOutputStream(new File(datasetFolder + fav.getUuid() + "_delete.trig"), false), StandardCharsets.UTF_8);
-//				Writer replaceCatalog = new OutputStreamWriter(new FileOutputStream(new File(datasetFolder + fav.getUuid() + "_replace_catalog.trig"), false), StandardCharsets.UTF_8)				
-				) {
+		try (FileSystemRDFOutputHandler outhandler = folderService.createAnnotationValidationExecutionRDFOutputHandler(pavc, shardSize)) {
+			Executor exec = new Executor(outhandler, safeExecute);
+//			exec.keepSubjects(true);
 			
-			Executor exec = new Executor(deleteHandler, safeExecute);
-			exec.keepSubjects(true);
-			
-			try (ExecuteMonitor em = new ExecuteMonitor("paged-validation", id, null, applicationEventPublisher)) {
+			try {
 				exec.setMonitor(em);
 				
-				String addD2rml = env.getProperty("validator.paged-mark-add.d2rml");
+				String addD2rml = dataserviceFolder + env.getProperty("validator.paged-mark-add.d2rml");
 				D2RMLModel addMapping = null;
 				try (InputStream inputStream = resourceLoader.getResource("classpath:"+ addD2rml).getInputStream()) {
-					addMapping = D2RMLModel.readFromString(new String(FileCopyUtils.copyToByteArray(inputStream), StandardCharsets.UTF_8));
+					String str = new String(FileCopyUtils.copyToByteArray(inputStream), StandardCharsets.UTF_8);
+					str = str.replace("{##ppRESOURCE_PREFIX##}", resourceVocabulary.getAnnotationAsResource("").toString());
+					
+					addMapping = D2RMLModel.readFromString(str);
 				}
 
-				String deleteD2rml = env.getProperty("validator.mark-delete.d2rml");
-				D2RMLModel deleteMapping = null;
-				try (InputStream inputStream = resourceLoader.getResource("classpath:"+ deleteD2rml).getInputStream()) {
-					deleteMapping = D2RMLModel.readFromString(new String(FileCopyUtils.copyToByteArray(inputStream), StandardCharsets.UTF_8));
+				String markD2rml = dataserviceFolder + env.getProperty("validator.mark.d2rml");
+				D2RMLModel markMapping = null;
+				try (InputStream inputStream = resourceLoader.getResource("classpath:"+ markD2rml).getInputStream()) {
+					String str = new String(FileCopyUtils.copyToByteArray(inputStream), StandardCharsets.UTF_8);
+					str = str.replace("{##ppRESOURCE_PREFIX##}", resourceVocabulary.getAnnotationAsResource("").toString());
+					
+					markMapping = D2RMLModel.readFromString(str);
 				}
+				
+//				String approveD2rml = dataserviceFolder + env.getProperty("validator.mark-approve.d2rml");
+//				D2RMLModel approveMapping = null;
+//				try (InputStream inputStream = resourceLoader.getResource("classpath:"+ approveD2rml).getInputStream()) {
+//					String str = new String(FileCopyUtils.copyToByteArray(inputStream), StandardCharsets.UTF_8);
+//					str = str.replace("{##ppRESOURCE_PREFIX##}", resourceVocabulary.getAnnotationAsResource("").toString());
+//					
+//					approveMapping = D2RMLModel.readFromString(str);
+//				}
 
-				String onPropertyString = AnnotationEditGroup.onPropertyListAsString(pav.getOnProperty());
-				String annfilter = AnnotationEditGroup.annotatorFilter("annotation", pav.getAnnotatorDocumentUuid());
+				PagedAnnotationValidation pav = pavc.getPagedAnnotationValidation();
+				
+				String onPropertyString = PathElement.onPathStringListAsSPARQLString(pav.getOnProperty());
+				String annfilter = aegService.annotatorFilter("annotation", pav.getAnnotatorDocumentUuid());
 
-				SSEController.send("paged-annotation-validation", applicationEventPublisher, this, new ExecuteNotificationObject(id, null,
-						ExecutionInfo.createStructure(deleteMapping), executeStart));
+				em.createStructure(markMapping, outhandler);
+				
+				em.sendMessage(new ExecuteNotificationObject(pavc));
 
 				for (AnnotationEdit edit :  annotationEditRepository.findByPagedAnnotationValidationId(pav.getId())) {
 				
-					if (edit.getAddedByUserId().size() > 0 && edit.getAcceptedByUserId().size() + 1 >= edit.getRejectedByUserId().size()) {
+					if (edit.getAddedByUserId().size() > 0) {
 						
 						Map<String, Object> params = new HashMap<>();
-						params.put("iigraph", SEMAVocabulary.getDataset(pav.getDatasetUuid()).toString());
+						params.put("iirdfsource", vc.getSparqlEndpoint());
+						params.put("iigraph", resourceVocabulary.getDatasetAsResource(pav.getDatasetUuid()).toString());
 						params.put("iiproperty", onPropertyString);
 						params.put("iivalue", edit.getOnValue().toString());
 						params.put("iiannotation", edit.getAnnotationValue());
-						params.put("iirdfsource", vc.getSparqlEndpoint());
 						params.put("iiconfidence", "1");
-						params.put("iiannotator", SEMAVocabulary.getAnnotationValidator(pav.getUuid()));
-						params.put("validator", SEMAVocabulary.getAnnotationValidator(pav.getUuid()));
-	
-//						System.out.println(edit.getOnValue().toString());
-						
-						exec.partialExecute(addMapping, params);
-					
-					} else if (edit.getAddedByUserId().size() == 0 && edit.getAcceptedByUserId().size() < edit.getRejectedByUserId().size()) {
+						params.put("iiannotator", resourceVocabulary.getAnnotationValidatorAsResource(pav.getUuid()));
+						params.put("validator", resourceVocabulary.getAnnotationValidatorAsResource(pav.getUuid()));
 
+						if (edit.getAcceptedByUserId().size() + 1 > edit.getRejectedByUserId().size()) { // + 1 is because user who added the annotation is considered to have approved it
+							
+							params.put("action", SOAVocabulary.Approve);
+							
+					    	String scope = edit.getMostAcceptedTargetAcceptProperty();
+							params.put("scope", scope != null ? scope : "");
+							
+							exec.partialExecute(addMapping, params);
+						
+						} else if (edit.getAcceptedByUserId().size() + 1 < edit.getRejectedByUserId().size()) {
+							
+							params.put("action", SOAVocabulary.Delete);
+							params.put("scope", "");
+							
+							exec.partialExecute(addMapping, params);
+						}
+					
+					} else if (edit.getAddedByUserId().size() == 0) {
 				    	String sparql = 
-				    			"SELECT ?annotation " +
-		     			        "WHERE { " + 
-		    			        "  GRAPH <" + pav.getAsProperty() + "> { " + 
-		    			        "    ?annotation <" + OAVocabulary.hasBody + "> <" + edit.getAnnotationValue() + "> . " +
-		    			        "    ?annotation <" + OAVocabulary.hasTarget + "> ?target . " +
-							    annfilter +
-		    			        "    ?target <" + SOAVocabulary.onProperty + "> \"" + onPropertyString + "\" . " +
-		    			        "    ?target <" + SOAVocabulary.onValue + "> " + edit.getOnValue().toString() + " . " +
-		    			        "    ?target <" + OAVocabulary.hasSource + "> ?source . " +
-		    			        (edit.getStart() != -1 ? " ?target <" + SOAVocabulary.start + "> " + edit.getStart() + " . " : " FILTER NOT EXISTS { ?target <" + SOAVocabulary.start + "> " + edit.getStart() + " } . ") +
-		    			        (edit.getEnd() != -1 ? " ?target <" + SOAVocabulary.end + "> " + edit.getEnd() + " . " : " FILTER NOT EXISTS { ?target <" + SOAVocabulary.end + "> " + edit.getEnd() + " } . ") +
-		    		            "  } . " +	    			        
-		    			        "  GRAPH <" + SEMAVocabulary.getDataset(pav.getDatasetUuid()).toString() + "> { " +
-		    			        "    ?source " + onPropertyString + " " + edit.getOnValue().toString() + " } " +
-		                        "  GRAPH <" + SEMAVocabulary.annotationGraph.toString() + "> { " +
-		                        "    ?adocid <http://purl.org/dc/terms/hasPart> ?annotation . } " +		    			        
-		    			        "}";
-	
+			    			"SELECT ?annotation " +
+	     			        "WHERE { " + 
+	    			        "  GRAPH <" + pav.getAsProperty() + "> { " + 
+	    			        "    ?annotation <" + OAVocabulary.hasBody + "> <" + edit.getAnnotationValue() + "> . " +
+	    			        "    ?annotation <" + OAVocabulary.hasTarget + "> ?target . " +
+						    annfilter +
+	    			        "    ?target <" + SOAVocabulary.onProperty + "> \"" + onPropertyString + "\" . " +
+	    			        "    ?target <" + SOAVocabulary.onValue + "> " + edit.getOnValue().toString() + " . " +
+	    			        "    ?target <" + OAVocabulary.hasSource + "> ?source . " +
+//		    			        (edit.getStart() != -1 ? " ?target <" + legacyVocabulary.fixLegacy(OAVocabulary.start) + "> " + edit.getStart() + " . " : " FILTER NOT EXISTS { ?target <" + legacyVocabulary.fixLegacy(OAVocabulary.start) + "> " + edit.getStart() + " } . ") +
+//		    			        (edit.getEnd() != -1 ? " ?target <" + legacyVocabulary.fixLegacy(OAVocabulary.end) + "> " + edit.getEnd() + " . " : " FILTER NOT EXISTS { ?target <" + legacyVocabulary.fixLegacy(OAVocabulary.end) + "> " + edit.getEnd() + " } . ") +
+                            (edit.getStart() != -1 ? " ?target <" + legacyVocabulary.fixLegacy(OAVocabulary.start) + "> " + edit.getStart() + " . " : " FILTER NOT EXISTS { ?target <" + legacyVocabulary.fixLegacy(OAVocabulary.start) + "> ?start  } . ") +
+                            (edit.getEnd() != -1 ? " ?target <" + legacyVocabulary.fixLegacy(OAVocabulary.end) + "> " + edit.getEnd() + " . " : " FILTER NOT EXISTS { ?target <" + legacyVocabulary.fixLegacy(OAVocabulary.end) + "> ?end } . ") +
+	    		            "  } . " +	    			        
+	    			        "  GRAPH <" + resourceVocabulary.getDatasetAsResource(pav.getDatasetUuid()).toString() + "> { " +
+	    			        "    ?source " + onPropertyString + " " + edit.getOnValue().toString() + " } " +
+	                        "  GRAPH <" + resourceVocabulary.getAnnotationGraphResource() + "> { " +
+	                        "    ?adocid <http://purl.org/dc/terms/hasPart> ?annotation . } " +		    			        
+	    			        "}";
+
+//						System.out.println(edit.getId());
+//				    	System.out.println(vc.getSparqlEndpoint());
+//						System.out.println(QueryFactory.create(sparql));
+
 						Map<String, Object> params = new HashMap<>();
 						params.put("iirdfsource", vc.getSparqlEndpoint());
 						params.put("iisparql", sparql);
-						params.put("validator", SEMAVocabulary.getAnnotationValidator(pav.getUuid()));
+						params.put("validator", resourceVocabulary.getAnnotationValidatorAsResource(pav.getUuid()));
+
+						if (edit.getAcceptedByUserId().size() < edit.getRejectedByUserId().size()) {
+							params.put("action", SOAVocabulary.Delete);
+							params.put("scope", "");
+							
+							exec.partialExecute(markMapping, params);
 						
-						exec.partialExecute(deleteMapping, params);
+						} else if (edit.getAcceptedByUserId().size() > edit.getRejectedByUserId().size()) {
+							params.put("action", SOAVocabulary.Approve);
+							
+					    	String scope = edit.getMostAcceptedTargetAcceptProperty();
+							params.put("scope", scope != null ? scope : "");
+							
+							exec.partialExecute(markMapping, params);
+						}
 					}
 				}	
 				
 				exec.completeExecution();
-		
-				Date executeFinish = new Date(System.currentTimeMillis());
-					
-				es.setExecuteCompletedAt(executeFinish);
-				es.setExecuteState(MappingState.EXECUTED);
-				es.setExecuteShards(deleteHandler.getShards());
-				es.setCount(deleteHandler.getTotalItems());
-					
-				pavRepository.save(pav);
-		
-				SSEController.send("filter-annotation-validation", applicationEventPublisher, this, new NotificationObject("execute",
-						MappingState.EXECUTED.toString(), id, null, executeStart, executeFinish, deleteHandler.getTotalItems()));
-
-				logger.info("Filter validation executed -- id: " + id + ", shards: " + 0);
-
-//				try {
-//					zipExecution(currentUser, adoc, outhandler.getShards());
-//				} catch (Exception ex) {
-//					ex.printStackTrace();
-//					
-//					logger.info("Zipping annotator execution failed -- id: " + id);
-//				}
 				
-				return true;
+				em.complete();
+		
+				pavc.save(ipavc -> {			    
+					MappingExecuteState ies = ((PagedAnnotationValidationContainer)ipavc).getPagedAnnotationValidation().getExecuteState(fileSystemConfiguration.getId());
+
+					ies.setExecuteState(MappingState.EXECUTED);
+					ies.setExecuteCompletedAt(em.getCompletedAt());
+					ies.setExecuteShards(outhandler.getShards());
+					ies.setCount(outhandler.getTotalItems());
+	//				ies.setCount(subjects.size());
+				});
+		
+				em.sendMessage(new ExecuteNotificationObject(pavc), outhandler.getTotalItems());
+
+				logger.info("Paged validation executed -- id: " + pavc.getPrimaryId() + ", shards: " + 0);
+
+				try {
+					serviceUtils.zipExecution(pavc, outhandler.getShards());
+				} catch (Exception ex) {
+					ex.printStackTrace();
+					
+					logger.info("Zipping paged validation execution failed -- id: " + pavc.getPrimaryId());
+				}
+				
+				return new AsyncResult<>(em.getCompletedAt());
 				
 			} catch (Exception ex) {
 				ex.printStackTrace();
 				
-				logger.info("Filter validation failed -- id: " + id);
-				
-//				exec.getMonitor().currentConfigurationFailed();
+				logger.info("Paged validation failed -- id: " + pavc.getPrimaryId());
 
 				throw ex;
 			}
 		} catch (Exception ex) {
 			ex.printStackTrace();
+			
+			em.complete(ex);
 
-			es.setExecuteState(MappingState.EXECUTION_FAILED);
+			try {
+				pavc.save(ipavc -> {			    
+					MappingExecuteState ies = ((PagedAnnotationValidationContainer)ipavc).getPagedAnnotationValidation().getExecuteState(fileSystemConfiguration.getId());
+	
+					ies.failDo(em);
+					ies.setExecuteShards(0);
+					ies.setSparqlExecuteShards(0);
+					ies.setCount(0);
+					ies.setSparqlCount(0);
+				});
+			} catch (Exception iex) {
+				iex.printStackTrace();
+				throw new TaskFailureException(iex, em.getCompletedAt());
+			}
+			
+			em.sendMessage(new ExecuteNotificationObject(pavc));
 
-			SSEController.send("filter-validation", applicationEventPublisher, this,
-					new NotificationObject("execute", MappingState.EXECUTION_FAILED.toString(), id, null, null, null));
-
-			pavRepository.save(pav);
-
-			return false;
+			throw new TaskFailureException(ex, em.getCompletedAt());
+			
+//		} finally {
+//			try {
+//				if (em != null) {
+//					em.close();
+//				}
+//			} catch (IOException e) {
+//				e.printStackTrace();
+//			}
 		}
 	}	
+
+	@Override
+	@Async("publishExecutor")
+	public ListenableFuture<Date> publish(TaskDescription tdescr, WebSocketService wsService) throws TaskFailureException {
+		return serviceUtils.publish(tdescr, wsService);
+	}
 	
-//	public boolean publish(UserPrincipal currentUser, String pavId) throws Exception {
-//		
-//		Optional<PagedAnnotationValidation> odoc = pavRepository.findById(pavId);
-//	    if (!odoc.isPresent()) {
-//	    	return false;
-//	    }
-//		
-//	    PagedAnnotationValidation pav = odoc.get();
+	@Override
+	@Async("publishExecutor")
+	public ListenableFuture<Date> unpublish(TaskDescription tdescr, WebSocketService wsService) throws TaskFailureException {
+		return serviceUtils.unpublish(tdescr, wsService);
+	}
+	
+//	@Override
+//	@Async("publishExecutor")
+//	public ListenableFuture<Date> publish(TaskDescription tdescr, WebSocketService wsService) throws TaskFailureException {
+//		GenericMonitor pm = (GenericMonitor)tdescr.getMonitor();	
 //
-//		PublishState ps = pav.getPublishState(virtuosoConfiguration.getDatabaseId());
+//		PagedAnnotationValidationContainer pavc = (PagedAnnotationValidationContainer)tdescr.getContainer();
+//		PagedAnnotationValidation pav = pavc.getPagedAnnotationValidation();
 //		
-//		ps.setPublishState(DatasetState.PUBLISHING);
-//		ps.setPublishStartedAt(new Date(System.currentTimeMillis()));
-//			
-//		pavRepository.save(pav);
-//			
-////		List<AnnotationEdit> deletes = annotationEditRepository.findByPagedAnnotationValidationId(adoc.getDatasetUuid(), adoc.getOnProperty(), adoc.getAsProperty(), AnnotationEditType.REJECT, adoc.getUserId());
-//		List<AnnotationEdit> deletes = annotationEditRepository.findByPagedAnnotationValidationId();
+//		TripleStoreConfiguration vc = pavc.getDatasetTripleStoreVirtuosoConfiguration();
 //		
-//		virtuosoJDBC.publish(currentUser, pav, deletes);
+//		MappingPublishState ps = pav.getPublishState(vc.getId()); // @FIXED FROM .getDatabaseId();
+//		
+//		try {
+//			ps.startDo(pm);
+//			
+//			pavc.save();
+//
+//			pm.sendMessage(new PublishNotificationObject(ps.getPublishState(), pavc));
+//			
+//			tripleStore.publish(vc, pavc);
 //	    	
-//		ps.setPublishCompletedAt(new Date(System.currentTimeMillis()));
-//		ps.setPublishState(DatasetState.PUBLISHED);
+//			pm.forceComplete();
 //			
-//		pavRepository.save(pav);
+//			ps.completeDo(pm);
+//			ps.setExecute(pav.getExecuteState(fileSystemConfiguration.getId()));
+//			
+//			pavc.save();
+//			
+//			pm.sendMessage(new PublishNotificationObject(ps.getPublishState(), pavc));
 //		
-//		logger.info("Paged annotation validation " + pavId + " publication completed.");
-//		
-//		return true;
-//	}
-	
-//	public boolean unpublish(UserPrincipal currentUser, String pavId) throws Exception {
-//		
-//		Optional<PagedAnnotationValidation> odoc = pavRepository.findById(pavId);
-//	    if (!odoc.isPresent()) {
-//	    	return false;
-//	    }
-//    	
-//	    PagedAnnotationValidation pav = odoc.get();
-//	    
-//		PublishState ps = pav.getPublishState(virtuosoConfiguration.getDatabaseId());
-//	
-//		ps.setPublishState(DatasetState.UNPUBLISHING);
-//		ps.setPublishStartedAt(new Date(System.currentTimeMillis()));
-//		
-//		pavRepository.save(pav);
-//		
-//		List<AnnotationEdit> adds = annotationEditRepository.findByPagedAnnotationValidationId(pav.getId()); // which criteria to add
-//	
-//		virtuosoJDBC.unpublish(currentUser, pav, adds);
-//    	
-//		ps.setPublishCompletedAt(new Date(System.currentTimeMillis()));
-//		ps.setPublishState(DatasetState.UNPUBLISHED);
-//		
-//		pavRepository.save(pav);
-//		
-//		logger.info("Paged annotation validation " + pavId + " unpublication completed.");
-//		
-//		return true;
-//	}
-	
-	public boolean republishNoDelete(UserPrincipal currentUser, String id) throws Exception {
-		return unpublishNoDelete(currentUser, id) && publishNoDelete(currentUser, id);
-	}
-
-	
-	public boolean publishNoDelete(UserPrincipal currentUser, String id) throws Exception {
-		
-		Optional<PagedAnnotationValidation> doc = pavRepository.findById(new ObjectId(id));
-	
-		if (doc.isPresent()) {
-			PagedAnnotationValidation pav = doc.get();
-			ac.software.semantic.model.Dataset ds = datasetRepository.findByUuid(pav.getDatasetUuid()).get();
-			VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
-
-			PublishState ps = pav.getPublishState(vc.getDatabaseId());
-		
-			ps.setPublishState(DatasetState.PUBLISHING);
-			ps.setPublishStartedAt(new Date(System.currentTimeMillis()));
-		
-			pavRepository.save(pav);
-			
-			virtuosoJDBC.publish(currentUser, vc.getName(), pav);
-	    	
-			ps.setPublishCompletedAt(new Date(System.currentTimeMillis()));
-			ps.setPublishState(DatasetState.PUBLISHED);
-			
-			pavRepository.save(pav);
-		}
-		
-		return true;
-	}
-
-	public boolean unpublishNoDelete(UserPrincipal currentUser, String id) throws Exception {
-		
-		Optional<PagedAnnotationValidation> doc = pavRepository.findById(new ObjectId(id));
-	
-		if (doc.isPresent()) {
-			PagedAnnotationValidation pav = doc.get();
-			ac.software.semantic.model.Dataset ds = datasetRepository.findByUuid(pav.getDatasetUuid()).get();
-			VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
-		
-			PublishState ps = pav.getPublishState(vc.getDatabaseId());
-		
-			ps.setPublishState(DatasetState.UNPUBLISHING);
-			ps.setPublishStartedAt(new Date(System.currentTimeMillis()));
-			
-			pavRepository.save(pav);
-			
-			virtuosoJDBC.unpublish(currentUser, vc.getName(), pav);
-	    	
-			ps.setPublishCompletedAt(new Date(System.currentTimeMillis()));
-			ps.setPublishState(DatasetState.UNPUBLISHED);
-			
-			pavRepository.save(pav);
-		}
-		
-		return true;
-	}
-	
-//	public Optional<String> getLastExecution(UserPrincipal currentUser, String pavId) throws Exception {
-//		Optional<PagedAnnotationValidation> entry = pavRepository.findById(new ObjectId(pavId));
-//		
-//		if (entry.isPresent()) {
-//			return Optional.empty();
+//			return new AsyncResult<>(pm.getCompletedAt());
+//			
+//		} catch (Exception ex) {
+//			ex.printStackTrace();
+//
+//			pm.forceComplete(ex);
+//			
+//	        ps.failDo(pm);
+//			
+//	        pavc.save();
+//			
+//			pm.sendMessage(new PublishNotificationObject(ps.getPublishState(), pavc));
+//			
+//			throw new TaskFailureException(ex, pm.getCompletedAt());
 //		}
-//			
-//		PagedAnnotationValidation pav = entry.get();
-//
-//		String datasetFolder = fileSystemConfiguration.getUserDataFolder(currentUser) + annotationsFolder + pav.getDatasetUuid() + "/";
-//		
-//		StringBuffer result = new StringBuffer();
-//			
-//		result.append(">> ADD    >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
-//		result.append(new String(Files.readAllBytes(Paths.get(datasetFolder + pav.getUuid().toString() + "_add.trig"))));
-//		result.append("\n");
-//		result.append(">> DELETE >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n");
-//		result.append(new String(Files.readAllBytes(Paths.get(datasetFolder + pav.getUuid().toString() + "_delete.trig"))));
-//
-//		return Optional.of(result.toString());
 //	}
 
-
-	public Optional<String> getLastExecution(UserPrincipal currentUser, String favId) throws Exception {
-		Optional<PagedAnnotationValidation> entry = pavRepository.findById(new ObjectId(favId));
-		
-		if (!entry.isPresent()) {
-			return Optional.empty();
-		}
-			
-		PagedAnnotationValidation pav = entry.get();
-
-		String datasetFolder = fileSystemConfiguration.getUserDataFolder(currentUser) + annotationsFolder + pav.getDatasetUuid() + "/";
-		
-		StringBuffer result = new StringBuffer();
-			
-		result.append(new String(Files.readAllBytes(Paths.get(datasetFolder + pav.getUuid().toString() + ".trig"))));
-
-		return Optional.of(result.toString());
-	}
+//	@Override
+//	@Async("publishExecutor")
+//	public ListenableFuture<Date> unpublish(TaskDescription tdescr, WebSocketService wsService) throws TaskFailureException {
+//		GenericMonitor pm = (GenericMonitor)tdescr.getMonitor();	
+//
+//		PagedAnnotationValidationContainer pavc = (PagedAnnotationValidationContainer)tdescr.getContainer();
+//		PagedAnnotationValidation pav = pavc.getPagedAnnotationValidation();
+//		Dataset dataset = pavc.getDataset();
+//		UserPrincipal currentUser = pavc.getCurrentUser();
+//		
+//		TripleStoreConfiguration vc = pavc.getDatasetTripleStoreVirtuosoConfiguration();
+//		
+//		MappingPublishState ps = pav.getPublishState(vc.getId()); // @FIXED FROM .getDatabaseId();
+//		
+//		try {
+//			ps.startUndo(pm);
+//	
+//			pavRepository.save(pav);
+//
+//			pm.sendMessage(new PublishNotificationObject(ps.getPublishState(), pavc));
+//			
+//			tripleStore.unpublish(vc, pavc);
+//			
+//			pav.removePublishState(ps);
+//			
+//			MappingExecuteState es = pav.getExecuteState(fileSystemConfiguration.getId());
+//			MappingExecuteState pes = ps.getExecute();
+//			if (es != null && pes != null && es.getExecuteStartedAt().compareTo(pes.getExecuteStartedAt()) != 0) {
+//				clearExecution(currentUser, dataset, pav, pes);
+//			}
+//			
+//			pavRepository.save(pav);
+//	    	
+//			pm.forceComplete();
+//			pm.sendMessage(new PublishNotificationObject(DatasetState.UNPUBLISHED, pavc));
+//		
+//			return new AsyncResult<>(pm.getCompletedAt());
+//			
+//		} catch (Exception ex) {
+//			ex.printStackTrace();
+//
+//			pm.forceComplete(ex);
+//
+//			ps.failUndo(pm);
+//			
+//			pavRepository.save(pav);
+//			
+//			pm.sendMessage(new PublishNotificationObject(ps.getPublishState(), pavc));
+//			
+//			throw new TaskFailureException(ex, pm.getCompletedAt());
+//		}
+//	}
+	
 }

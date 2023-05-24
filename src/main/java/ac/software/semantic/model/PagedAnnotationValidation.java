@@ -1,6 +1,6 @@
 package ac.software.semantic.model;
 
-import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 import org.bson.types.ObjectId;
@@ -8,9 +8,14 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+import ac.software.semantic.model.state.MappingPublishState;
+import ac.software.semantic.model.state.PagedAnnotationValidationState;
 
 @Document(collection = "PagedAnnotationValidation")
-public class PagedAnnotationValidation implements AnnotationValidation {
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class PagedAnnotationValidation extends MappingExecutePublishDocument<MappingPublishState> implements AnnotationValidation {
 	@Id
 	private ObjectId id;
 
@@ -25,6 +30,8 @@ public class PagedAnnotationValidation implements AnnotationValidation {
 	private List<String> onProperty;
 	private String asProperty;
 	private List<String> annotatorDocumentUuid;
+	
+	private ObjectId databaseId;
 
 	private int pageSize;
 	private int annotatedPagesCount;
@@ -32,17 +39,25 @@ public class PagedAnnotationValidation implements AnnotationValidation {
 	
 	private int annotationsCount;
 
-	private boolean isComplete;
+	private boolean isComplete; // false = not active, true = active // deprecated
 	
 	private String uuid;
 	
-	private List<ExecuteState> execute;
-	private List<PublishState> publish;
+	private PagedAnnotationValidationState lifecycle;
+	private Date lifecycleStartedAt;
+	private Date resumingStartedAt;
+	private Date lifecycleCompletedAt;
+	
+	private String mode;
+	
+	private Date updatedAt;
+	
+	private boolean active;
+	
+	// for correctness the PagedAnnotationValidation should correspond to a virtuosoConfiguration !!! (and the annotation edits ???)
 
 	public PagedAnnotationValidation() {
-       execute = new ArrayList<>();
-       publish = new ArrayList<>();
-
+		super();
 	}
 
 	public ObjectId getId() {
@@ -121,9 +136,9 @@ public class PagedAnnotationValidation implements AnnotationValidation {
 		this.onProperty = onProperty;
 	}
 	
-	public String getOnPropertyAsString() {
-		return AnnotationEditGroup.onPropertyListAsString(this.getOnProperty());
-	}
+//	public String getOnPropertyAsString() {
+//		return AnnotationEditGroup.onPropertyListAsString(this.getOnProperty());
+//	}
 
 	public int getAnnotationsCount() {
 		return annotationsCount;
@@ -139,84 +154,6 @@ public class PagedAnnotationValidation implements AnnotationValidation {
 
 	public void setAnnotatorDocumentUuid(List<String> annotatorDocumentUuid) {
 		this.annotatorDocumentUuid = annotatorDocumentUuid;
-	}
-	
-	public List<PublishState> getPublish() {
-		return publish;
-	}
-
-	public void setPublish(List<PublishState> publish) {
-		this.publish = publish;
-	}
-	
-	public PublishState getPublishState(ObjectId databaseConfigurationId) {
-		if (publish != null) {
-			for (PublishState s : publish) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-					return s;
-				}
-			}
-		} else {
-			publish = new ArrayList<>();
-		}
-		
-		PublishState s = new PublishState();
-		s.setPublishState(DatasetState.UNPUBLISHED);
-		s.setDatabaseConfigurationId(databaseConfigurationId);
-		publish.add(s);
-		
-		return s;	
-	}
-	
-	public PublishState checkPublishState(ObjectId databaseConfigurationId) {
-		if (publish != null) {
-			for (PublishState s : publish) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-					return s;
-				}
-			}
-		}
-		
-		return null;
-	}	
-
-	public List<ExecuteState> getExecute() {
-		return execute;
-	}
-
-	public void setExecute(List<ExecuteState> execute) {
-		this.execute = execute;
-	}	
-	
-	public ExecuteState getExecuteState(ObjectId databaseConfigurationId) {
-		if (execute != null) {
-			for (ExecuteState s : execute) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-					return s;
-				}
-			}
-		} else {
-			execute = new ArrayList<>();
-		}
-		
-		ExecuteState s = new ExecuteState();
-		s.setExecuteState(MappingState.NOT_EXECUTED);
-		s.setDatabaseConfigurationId(databaseConfigurationId);
-		execute.add(s);
-		
-		return s;
-	}
-
-	public ExecuteState checkExecuteState(ObjectId databaseConfigurationId) {
-		if (execute != null) {		
-			for (ExecuteState s : execute) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-					return s;
-				}
-			}
-		}
-		
-		return null;
 	}
 
 	public String getUuid() {
@@ -234,5 +171,71 @@ public class PagedAnnotationValidation implements AnnotationValidation {
 	public void setName(String name) {
 		this.name = name;
 	}
+
+	public PagedAnnotationValidationState getLifecycle() {
+		return lifecycle;
+	}
+
+	public void setLifecycle(PagedAnnotationValidationState lifecycle) {
+		this.lifecycle = lifecycle;
+	}
+
+	public Date getLifecycleStartedAt() {
+		return lifecycleStartedAt;
+	}
+
+	public void setLifecycleStartedAt(Date lifecycleStartedAt) {
+		this.lifecycleStartedAt = lifecycleStartedAt;
+	}
+
+	public Date getLifecycleCompletedAt() {
+		return lifecycleCompletedAt;
+	}
+
+	public void setLifecycleCompletedAt(Date lifecycleCompletedAt) {
+		this.lifecycleCompletedAt = lifecycleCompletedAt;
+	}
+
+	public Date getResumingStartedAt() {
+		return resumingStartedAt;
+	}
+
+	public void setResumingStartedAt(Date resumingStartedAt) {
+		this.resumingStartedAt = resumingStartedAt;
+	}
+
+	public String getMode() {
+		return mode;
+	}
+
+	public void setMode(String mode) {
+		this.mode = mode;
+	}
+
+	public Date getUpdatedAt() {
+		return updatedAt;
+	}
+
+	public void setUpdatedAt(Date updatedAt) {
+		this.updatedAt = updatedAt;
+	}
+
+	public boolean isActive() {
+		return active;
+	}
+
+	public void setActive(boolean active) {
+		this.active = active;
+	}
+
+	public ObjectId getDatabaseId() {
+		return databaseId;
+	}
+
+	public void setDatabaseId(ObjectId databaseId) {
+		this.databaseId = databaseId;
+	}
+
+
 
 }

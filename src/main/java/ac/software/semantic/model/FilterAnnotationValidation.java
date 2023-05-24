@@ -10,8 +10,14 @@ import org.springframework.data.mongodb.core.mapping.Document;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.constants.FilterValidationType;
+import ac.software.semantic.model.state.MappingExecuteState;
+import ac.software.semantic.model.state.MappingPublishState;
+import ac.software.semantic.model.state.MappingState;
+
 @Document(collection = "FilterAnnotationValidation")
-public class FilterAnnotationValidation implements AnnotationValidation {
+public class FilterAnnotationValidation extends MappingExecutePublishDocument<MappingPublishState> implements AnnotationValidation {
 	@Id
 	private ObjectId id;
 
@@ -28,16 +34,12 @@ public class FilterAnnotationValidation implements AnnotationValidation {
 	private List<String> onProperty;
 	private String asProperty;
 	private List<String> annotatorDocumentUuid;
+	
+	private ObjectId databaseId;
 
 	private String uuid;
 	
-	private List<ExecuteState> execute;
-	private List<PublishState> publish;
-
 	public FilterAnnotationValidation() {
-       execute = new ArrayList<>();
-       publish = new ArrayList<>();
-
 	}
 
 	public ObjectId getId() {
@@ -85,10 +87,6 @@ public class FilterAnnotationValidation implements AnnotationValidation {
 		this.onProperty = onProperty;
 	}
 	
-	public String getOnPropertyAsString() {
-		return AnnotationEditGroup.onPropertyListAsString(this.getOnProperty());
-	}
-
 	public List<String> getAnnotatorDocumentUuid() {
 		return annotatorDocumentUuid;
 	}
@@ -97,84 +95,6 @@ public class FilterAnnotationValidation implements AnnotationValidation {
 		this.annotatorDocumentUuid = annotatorDocumentUuid;
 	}
 	
-	public List<PublishState> getPublish() {
-		return publish;
-	}
-
-	public void setPublish(List<PublishState> publish) {
-		this.publish = publish;
-	}
-	
-	public PublishState getPublishState(ObjectId databaseConfigurationId) {
-		if (publish != null) {
-			for (PublishState s : publish) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-					return s;
-				}
-			}
-		} else {
-			publish = new ArrayList<>();
-		}
-		
-		PublishState s = new PublishState();
-		s.setPublishState(DatasetState.UNPUBLISHED);
-		s.setDatabaseConfigurationId(databaseConfigurationId);
-		publish.add(s);
-		
-		return s;	
-	}
-	
-	public PublishState checkPublishState(ObjectId databaseConfigurationId) {
-		if (publish != null) {
-			for (PublishState s : publish) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-					return s;
-				}
-			}
-		}
-		
-		return null;
-	}	
-
-	public List<ExecuteState> getExecute() {
-		return execute;
-	}
-
-	public void setExecute(List<ExecuteState> execute) {
-		this.execute = execute;
-	}	
-	
-	public ExecuteState getExecuteState(ObjectId databaseConfigurationId) {
-		if (execute != null) {
-			for (ExecuteState s : execute) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-					return s;
-				}
-			}
-		} else {
-			execute = new ArrayList<>();
-		}
-		
-		ExecuteState s = new ExecuteState();
-		s.setExecuteState(MappingState.NOT_EXECUTED);
-		s.setDatabaseConfigurationId(databaseConfigurationId);
-		execute.add(s);
-		
-		return s;
-	}
-
-	public ExecuteState checkExecuteState(ObjectId databaseConfigurationId) {
-		if (execute != null) {		
-			for (ExecuteState s : execute) {
-				if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
-					return s;
-				}
-			}
-		}
-		
-		return null;
-	}
-
 	public String getUuid() {
 		return uuid;
 	}
@@ -217,6 +137,14 @@ public class FilterAnnotationValidation implements AnnotationValidation {
 			}
 		}
 		return res;
+	}
+
+	public ObjectId getDatabaseId() {
+		return databaseId;
+	}
+
+	public void setDatabaseId(ObjectId databaseId) {
+		this.databaseId = databaseId;
 	}
  
 }

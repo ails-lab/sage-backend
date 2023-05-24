@@ -12,7 +12,7 @@
 @prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
 @prefix cnt: <http://www.w3.org/2011/content#> .
 
-@prefix collection:    <http://sw.islab.ntua.gr/semaspace/resource/annotation/> .
+@prefix collection: <{##ppRESOURCE_PREFIX##}>
 @prefix model: <http://sw.islab.ntua.gr/semaspace/model/>
 
 <#SPARQLEndpoint>
@@ -68,7 +68,7 @@
 <#EntityLookupTransformation>  
    rr:logicalTable [ 
       dr:source <#SPARQLEndpoint> ;
-      dr:sparqlQuery "SELECT ?id WHERE { GRAPH <{@@iigraph@@}> { ?id {@@iiproperty@@} {@@literal@@} } }" ;
+      dr:sparqlQuery "SELECT ?id {@@iigraph@@} WHERE { ?id {@@iiproperty@@} {@@literal@@} }" ;
    ] ;
    dr:parameterBinding [ 
       dr:parameter "iirdfsource" ;
@@ -89,11 +89,15 @@
       rr:constant "{@@iiproperty@@}" ;
    ] .    
       
+<#ExecuteSpecification>
+   a dr:D2RMLSpecification ;
+   dr:logicalDatasets ( <#EnrichMapping> ) .
+         
 <#EnrichMapping>  
    a  <http://islab.ntua.gr/ns/d2rml#PrimaryTriplesMap> ;
    rr:logicalTable [ 
       dr:source <#SPARQLEndpoint> ;
-      dr:sparqlQuery "SELECT DISTINCT ?literal ?lexicalValue ?language WHERE { GRAPH <{@@iigraph@@}> { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) } }" ;      
+      dr:sparqlQuery "SELECT DISTINCT ?literal ?lexicalValue ?language {@@iigraph@@} WHERE { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) }" ;      
 	  is:parameters ( [ 
          a is:ExternalVariable;
          is:name "iigraph" ;
@@ -171,15 +175,15 @@
 			  ] ;
 		   ] ;
 		   rr:predicateObjectMap [
-		      rr:predicate <http://sw.islab.ntua.gr/annotation/start> ;
+		      rr:predicate oa:start ;
 			  rr:objectMap [
                  rr:column "$.offset";
                  dr:transformationReference <#AIDAMapping2> ;
-				 rr:datatype xsd:integer;
+				 rr:datatype xsd:nonNegativeInteger;
 			  ] ;
 		   ] ;
 		   rr:predicateObjectMap [
-		      rr:predicate <http://sw.islab.ntua.gr/annotation/end> ;
+		      rr:predicate oa:end ;
 			  rr:objectMap [
 			     dr:definedColumn [
                     dr:name "END" ;
@@ -204,7 +208,7 @@
                     ] ;
                  ] ;
                  rr:column "END";
-				 rr:datatype xsd:integer;
+				 rr:datatype xsd:nonNegativeInteger;
 			  ] ;
 		   ] ;
 		];

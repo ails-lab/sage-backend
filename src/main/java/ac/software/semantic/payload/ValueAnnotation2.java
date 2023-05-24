@@ -3,7 +3,7 @@ package ac.software.semantic.payload;
 import java.util.ArrayList;
 import java.util.Date;
 
-import ac.software.semantic.model.MappingState;
+import ac.software.semantic.model.state.MappingState;
 
 //public class ValueAnnotation2 {
 //    private String value;

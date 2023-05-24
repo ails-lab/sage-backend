@@ -8,11 +8,14 @@ import org.bson.types.ObjectId;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
 import ac.software.semantic.model.AnnotationEditFilter;
-import ac.software.semantic.model.DatasetState;
-import ac.software.semantic.model.FilterValidationType;
-import ac.software.semantic.model.MappingState;
+import ac.software.semantic.model.NotificationMessage;
+import ac.software.semantic.model.PathElement;
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.constants.FilterValidationType;
+import ac.software.semantic.model.state.MappingState;
 
-public class FilterAnnotationValidationResponse {
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class FilterAnnotationValidationResponse implements Response {
 	private String id;
 
 	private String name;
@@ -22,7 +25,7 @@ public class FilterAnnotationValidationResponse {
 	private ObjectId annotationEditGroupId;
 	
 	private String datasetUuid;
-	private List<String> onProperty;
+	private List<PathElement> onProperty;
 	private String asProperty;
 	private List<String> annotatorDocumentUuid;
 
@@ -31,18 +34,18 @@ public class FilterAnnotationValidationResponse {
 	private MappingState executeState;
 	private DatasetState publishState;
 
-	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private Date executeStartedAt;
-
-	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private Date executeCompletedAt;
+	private Integer executeCount;
 
-	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private Date publishStartedAt;
-
-	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private Date publishCompletedAt;
 
+	private List<NotificationMessage> executeMessages;
+	
+	private boolean publishedFromCurrentFileSystem;
+	private boolean newExecution;
+	
 	public FilterAnnotationValidationResponse() {
 	}
 
@@ -79,11 +82,11 @@ public class FilterAnnotationValidationResponse {
 		this.asProperty = asProperty;
 	}
 
-	public List<String> getOnProperty() {
+	public List<PathElement> getOnProperty() {
 		return onProperty;
 	}
 
-	public void setOnProperty(List<String> onProperty) {
+	public void setOnProperty(List<PathElement> onProperty) {
 		this.onProperty = onProperty;
 	}
 //	
@@ -169,6 +172,38 @@ public class FilterAnnotationValidationResponse {
 
 	public void setFilters(List<AnnotationEditFilter> filters) {
 		this.filters = filters;
+	}
+
+	public boolean isPublishedFromCurrentFileSystem() {
+		return publishedFromCurrentFileSystem;
+	}
+
+	public void setPublishedFromCurrentFileSystem(boolean publishedFromCurrentFileSystem) {
+		this.publishedFromCurrentFileSystem = publishedFromCurrentFileSystem;
+	}
+
+	public boolean isNewExecution() {
+		return newExecution;
+	}
+
+	public void setNewExecution(boolean newExecution) {
+		this.newExecution = newExecution;
+	}
+
+	public List<NotificationMessage> getExecuteMessages() {
+		return executeMessages;
+	}
+
+	public void setExecuteMessages(List<NotificationMessage> executeMessages) {
+		this.executeMessages = executeMessages;
+	}
+
+	public Integer getExecuteCount() {
+		return executeCount;
+	}
+
+	public void setExecuteCount(Integer executeCount) {
+		this.executeCount = executeCount;
 	}
 
 }

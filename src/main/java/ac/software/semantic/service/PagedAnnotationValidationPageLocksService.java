@@ -7,7 +7,7 @@ import ac.software.semantic.model.PagedAnnotationValidationPageLocks;
 import ac.software.semantic.payload.PagedAnnotationValidatationDataResponse;
 import ac.software.semantic.repository.PagedAnnotationValidationPageLocksRepository;
 import ac.software.semantic.repository.PagedAnnotationValidationRepository;
-import ac.software.semantic.repository.PagedAnnotationValidationRepositoryPage;
+import ac.software.semantic.repository.PagedAnnotationValidationPageRepository;
 import ac.software.semantic.security.UserPrincipal;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
@@ -30,7 +30,7 @@ public class PagedAnnotationValidationPageLocksService {
     private PagedAnnotationValidationRepository pavRepository;
 
     @Autowired
-    private PagedAnnotationValidationRepositoryPage pavpRepository;
+    private PagedAnnotationValidationPageRepository pavpRepository;
 
     //throws org.springframework.dao.DuplicateKeyException if index already in Database
 //    public boolean obtainLock(String userId, String pagedAnnotationValidationId, int page, AnnotationValidationRequest mode) {

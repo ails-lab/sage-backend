@@ -11,10 +11,21 @@
 	<parent>
 		<groupId>org.springframework.boot</groupId>
 		<artifactId>spring-boot-starter-parent</artifactId>
-		<version>2.1.6.RELEASE</version>
+	<version>2.1.6.RELEASE</version> <!-- Java 1.8 -->
+	<!--<version>2.7.0</version> --> <!-- Java 17 -->
 	</parent>
 
 	<dependencies>
+		<dependency>
+			<groupId>org.springframework.boot</groupId>
+			<artifactId>spring-boot-starter-websocket</artifactId>
+		</dependency>
+
+		<dependency>
+			<groupId>org.springframework.security</groupId>
+			<artifactId>spring-security-messaging</artifactId>
+		</dependency>
+
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-web</artifactId>
@@ -31,7 +42,7 @@
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-mail</artifactId>
-			<version>2.3.4.RELEASE</version>
+			<!--<version>2.3.4.RELEASE</version>-->
 		</dependency>
 		<!-- <dependency> <groupId>org.springframework.data</groupId> <artifactId>spring-data-elasticsearch</artifactId> 
 			<version>3.0.8.RELEASE</version> <exclusions> <exclusion> <groupId>org.elasticsearch</groupId> 
@@ -92,8 +103,12 @@
 			<artifactId>spring-integration-sftp</artifactId>
 		</dependency>
 
-		<!-- <dependency> <groupId>commons-fileupload</groupId> <artifactId>commons-fileupload</artifactId> 
-			<version>1.4</version> </dependency> -->
+<!-- 		<dependency>
+			<groupId>commons-fileupload</groupId>
+			<artifactId>commons-fileupload</artifactId>
+			<version>1.4</version>
+
+		</dependency> -->
 
 		<dependency>
 			<groupId>org.springframework</groupId>
@@ -127,7 +142,11 @@
 			<artifactId>ac-semaspace</artifactId>
 			<version>0.0.1</version>
 		</dependency>
-
+<!--		<dependency>
+			<groupId>edu.ntua.isci</groupId>
+			<artifactId>ac-text-analyze</artifactId>
+			<version>0.0.1</version>
+		</dependency> -->
 		<dependency>
 			<groupId>com.openlink.virtuoso</groupId>
 			<artifactId>virtjdbc4</artifactId>
@@ -153,17 +172,29 @@
 		</dependency>
 
 		<dependency>
-			<groupId>org.springdoc</groupId>
-			<artifactId>springdoc-openapi-ui</artifactId>
-			<version>1.5.0</version>
-		</dependency>
+      		<groupId>org.springdoc</groupId>
+      		<artifactId>springdoc-openapi-ui</artifactId>
+      		<version>1.5.0</version> <!--Java 1.8 -->
+      		<!--<version>1.6.9</version>--> <!--Java 17 -->
+      		
+   		</dependency>
 
-		<dependency>
-			<groupId>net.sf.ehcache</groupId>
-			<artifactId>ehcache</artifactId>
-			<version>2.10.6</version>
-		</dependency>
-		<dependency>
+   		<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-data-jpa</artifactId>
+</dependency>
+   		      <dependency>
+         <groupId>com.h2database</groupId>
+         <artifactId>h2</artifactId>
+         <scope>runtime</scope>
+      </dependency>
+
+	<dependency>
+	    <groupId>net.sf.ehcache</groupId>
+	    <artifactId>ehcache</artifactId>
+	    <version>2.10.6</version>
+	</dependency>
+			<dependency>
 			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-api</artifactId>
 			<version>2.15.0</version>
@@ -172,11 +203,23 @@
 			<groupId>org.apache.logging.log4j</groupId>
 			<artifactId>log4j-core</artifactId>
 			<version>2.15.0</version>
-		</dependency>
+		</dependency>		
+		
+		<dependency>
+    <groupId>com.google.guava</groupId>
+    <artifactId>guava</artifactId>
+    <version>31.0.1-jre</version>
+</dependency>
+<!-- <dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-devtools</artifactId>
+    <scope>runtime</scope>
+    <optional>true</optional>
+</dependency> -->
 	</dependencies>
 
 	<properties>
-		<java.version>1.8</java.version>
+	   <java.version>1.8</java.version>
 	</properties>
 
 
@@ -187,15 +230,15 @@
 				<artifactId>spring-boot-maven-plugin</artifactId>
 			</plugin>
 			<plugin>
-				<groupId>com.google.cloud.tools</groupId>
-				<artifactId>jib-maven-plugin</artifactId>
-				<version>2.4.0</version>
-				<configuration>
-					<to>
-						<image>semantic-backend</image>
-					</to>
-				</configuration>
-			</plugin>
+			  <groupId>com.google.cloud.tools</groupId>
+			  <artifactId>jib-maven-plugin</artifactId>
+			  <version>2.4.0</version>
+			  <configuration>
+			    <to>
+			      <image>semantic-backend</image>
+			    </to>
+			  </configuration>
+			</plugin>			
 		</plugins>
 	</build>
 

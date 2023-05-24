@@ -7,8 +7,9 @@ import org.springframework.data.annotation.Id;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-import ac.software.semantic.model.DatasetState;
-import ac.software.semantic.model.MappingState;
+import ac.software.semantic.model.PathElement;
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.state.MappingState;
 
 public class AnnotationEditGroupResponse {
 
@@ -19,7 +20,7 @@ public class AnnotationEditGroupResponse {
 	
 	private String datasetUuid;
 	   
-	private List<String> onProperty;
+	private List<PathElement> onProperty;
 	private String asProperty;
 	   
 //	private MappingState executeState;
@@ -42,6 +43,8 @@ public class AnnotationEditGroupResponse {
 	private List<PagedAnnotationValidationResponse> pagedAnnotationValidations;
 	private List<FilterAnnotationValidationResponse> filterAnnotationValidations;
 
+	private boolean autoexportable;
+	   
 	public AnnotationEditGroupResponse() {
 	}
 
@@ -117,11 +120,11 @@ public class AnnotationEditGroupResponse {
 		this.datasetUuid = datasetUuid;
 	}
 
-	public List<String> getOnProperty() {
+	public List<PathElement> getOnProperty() {
 		return onProperty;
 	}
 
-	public void setOnProperty(List<String> onProperty) {
+	public void setOnProperty(List<PathElement> onProperty) {
 		this.onProperty = onProperty;
 	}
 
@@ -155,5 +158,13 @@ public class AnnotationEditGroupResponse {
 
 	public void setUuid(String uuid) {
 		this.uuid = uuid;
+	}
+
+	public boolean isAutoexportable() {
+		return autoexportable;
+	}
+
+	public void setAutoexportable(boolean autoexportable) {
+		this.autoexportable = autoexportable;
 	}
 }

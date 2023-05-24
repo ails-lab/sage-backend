@@ -8,94 +8,114 @@
 @prefix dcterms: <http://purl.org/dc/terms/> .
 
 @prefix dr:   <http://islab.ntua.gr/ns/d2rml#> .
-@prefix op:  <http://islab.ntua.gr/ns/d2rml-op#> .
-@prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
+@prefix drop:  <http://islab.ntua.gr/ns/d2rml-op#> .
+@prefix dris:  <http://islab.ntua.gr/ns/d2rml-is#> .
 
-@prefix collection:    <http://sw.islab.ntua.gr/semaspace/resource/annotation/> .
+@prefix collection: <{##ppRESOURCE_PREFIX##}>
+
 @prefix model: <http://sw.islab.ntua.gr/semaspace/model/>
 
 <#SPARQLEndpoint>
-   a is:SPARQLService ;
-   is:uri "{@@iirdfsource@@}" .
+   a dris:SPARQLEndpoint ;
+   dris:uri "{@@iirdfsource@@}" .
    
 <#RemoteSPARQLEndpoint>
-   a is:SPARQLService ;
-   is:uri "{@@endpoint@@}" .
+   a dris:SPARQLEndpoint ;
+   dris:uri "{@@endpoint@@}" .
    
 <#SPARQLTransformation>
    rr:logicalTable [ 
       dr:source <#RemoteSPARQLEndpoint> ;
       dr:sparqlQuery "{@@query@@}" ;   
-   ] ;
-   dr:parameterBindings ( [ 
-      dr:parameter "endpoint" ;
-      rr:constant "{@@endpoint@@}" ;
-   ] [ 
-      dr:parameter "query" ;
-      rr:constant "{@@sparql-query@@}" ;
-   ] [ 
-      dr:parameter "literal" ;
-      rr:column "{##ppLITERAL##}" ;
-      dr:valueType rr:Literal ; 
-      dr:escapeType dr:EscapeSpecial ;
-   ] [ 
-      dr:parameter "lexicalValue" ;
-      rr:column "{##ppLEXICAL-VALUE##}" ;
-      dr:escapeType dr:EscapeSpecial ;
-   ] [ 
-      dr:parameter "language" ;
-      rr:column "language" ;
-   ] ) .
+   ] .
    
 <#EntityLookupTransformation>  
    rr:logicalTable [ 
       dr:source <#SPARQLEndpoint> ;
-      dr:sparqlQuery "SELECT ?id WHERE { GRAPH <{@@iigraph@@}> { ?id {@@iiproperty@@} {@@literal@@} } }" ;
-   ] ;
-   dr:parameterBinding [ 
-      dr:parameter "iirdfsource" ;
-      rr:constant "{@@iirdfsource@@}" ;
-   ] ;
-   dr:parameterBinding [ 
-      dr:parameter "literal" ;
-      rr:column "literal" ;
-      dr:valueType rr:Literal;
-      dr:escapeType dr:EscapeSpecial ;
-   ] ;
-   dr:parameterBinding [ 
-      dr:parameter "iigraph" ;
-      rr:constant "{@@iigraph@@}" ;
-   ] ;   
-   dr:parameterBinding [ 
-      dr:parameter "iiproperty" ;
-      rr:constant "{@@iiproperty@@}" ;
-   ] .   
-	
+      dr:sparqlQuery "SELECT ?id {@@iigraph@@} WHERE { ?id {@@iiproperty@@} {@@literal@@} }" ;
+   ] .
+   
+<#ExecuteSpecification>
+   a dr:D2RMLSpecification ;
+   dr:logicalDatasets ( <#EnrichMapping> ) .
    
 <#EnrichMapping>  
    a  <http://islab.ntua.gr/ns/d2rml#PrimaryTriplesMap> ;
    rr:logicalTable [ 
       dr:source <#SPARQLEndpoint> ;
-      dr:sparqlQuery "SELECT DISTINCT ?literal ?lexicalValue ?language WHERE { GRAPH <{@@iigraph@@}> { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) } }" ;
-	  is:parameters ( [ 
-         a is:ExternalVariable;
-         is:name "iigraph" ;
+      dr:sparqlQuery "SELECT DISTINCT ?literal ?lexicalValue ?language {@@iigraph@@} WHERE  { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) }" ;
+	  dris:parameters ( [ 
+         a dris:ExternalVariable;
+         dris:name "iigraph" ;
       ] [ 
-         a is:ExternalVariable;
-         is:name "iiproperty" ;
+         a dris:ExternalVariable;
+         dris:name "iiproperty" ;
       ] ) ;
    ] ;
-   dr:transformations ( <#SPARQLTransformation> <#EntityLookupTransformation> ) ;
+   dr:transformations ( 
+   [
+      dr:dataref <#SPARQLTransformation> ;
+      dr:name "SPARQLTransformation";   
+      dr:parameterBinding [ 
+         dr:parameter "endpoint" ;
+         rr:constant "{@@endpoint@@}" ;
+      ] ;
+      dr:parameterBinding [ 
+         dr:parameter "query" ;
+         rr:constant "{@@sparql-query@@}" ;
+      ] ;
+      dr:parameterBinding [ 
+         dr:parameter "literal" ;
+         rr:column "{##ppLITERAL##}" ;
+         dr:valueType rr:Literal ; 
+         dr:escapeType dr:EscapeSpecial ;
+      ] ;
+      dr:parameterBinding [ 
+         dr:parameter "lexicalValue" ;
+         rr:column "{##ppLEXICAL-VALUE##}" ;
+         dr:escapeType dr:EscapeSpecial ;
+      ] ;
+      dr:parameterBinding [ 
+         dr:parameter "language" ;
+         rr:column "language" ;
+      ] ;
+   ] 
+   [
+      dr:dataref <#EntityLookupTransformation> ;
+      dr:name "EntityLookupTransformation";
+      dr:parameterBinding [ 
+         dr:parameter "iirdfsource" ;
+         rr:constant "{@@iirdfsource@@}" ;
+      ] ;
+      dr:parameterBinding [ 
+         dr:parameter "literal" ;
+         rr:column "literal" ;
+         dr:valueType rr:Literal ;
+         dr:escapeType dr:EscapeSpecial ;
+      ] ;
+      dr:parameterBinding [ 
+         dr:parameter "iigraph" ;
+         rr:constant "{@@iigraph@@}" ;
+      ] ;   
+      dr:parameterBinding [ 
+         dr:parameter "iiproperty" ;
+         rr:constant "{@@iiproperty@@}" ;
+      ] 
+   ]
+   ) ;   
+   
    dr:pivots ( [ 
-      dr:transformationReference <#SPARQLTransformation> ;
-   ] [ 
-      dr:transformationReference <#EntityLookupTransformation> ;
-   ] ) ;
+      rr:column "SPARQLTransformation~~" ;
+   ] [
+      rr:column "EntityLookupTransformation~~" ;
+   ] ) ; 
+      
    {##ppPREPROCESS##}
+   
    rr:subjectMap [ 
       dr:definedColumns ( [
          dr:name "UUID" ;
-         dr:function op:uuid ; 
+         dr:function drop:uuid ; 
       ] );
       rr:template  "{@collection}{UUID}" ;
       rr:class oa:Annotation ;
@@ -113,7 +133,7 @@
       rr:objectMap [
          dr:definedColumns ( [
             dr:name "TIME" ;
-            dr:function op:currentTime; 
+            dr:function drop:currentTime; 
          ] );          
          rr:column "TIME";
          rr:datatype xsd:dateTime ;
@@ -130,8 +150,7 @@
 		   rr:predicateObjectMap [
 		      rr:predicate oa:hasSource ;
 			  rr:objectMap [
-			     rr:column "id" ;
-			     dr:transformationReference <#EntityLookupTransformation> ;
+			     rr:column "EntityLookupTransformation~~id" ;
 			  ] ;
 		   ] ;
 		   rr:predicateObjectMap [
@@ -154,15 +173,13 @@
    rr:predicateObjectMap [ 
       rr:predicate  oa:hasBody ;
 	  rr:objectMap [
-         rr:column "uri";
-         dr:transformationReference <#SPARQLTransformation> ;
+         rr:column "SPARQLTransformation~~uri";
       ] ;
    ] ;
    rr:predicateObjectMap [ 
       rr:predicate  <http://sw.islab.ntua.gr/annotation/score> ;
 	  rr:objectMap [
-         rr:column "score";
-         dr:transformationReference <#SPARQLTransformation> ;
+         rr:column "SPARQLTransformation~~score";
          rr:datatype xsd:double;
       ] ;
    ] .

@@ -5,7 +5,7 @@ import java.util.Date;
 import java.util.List;
 
 import ac.software.semantic.model.AnnotationEditValue;
-import ac.software.semantic.model.MappingState;
+import ac.software.semantic.model.state.MappingState;
 
 public class ValueAnnotation {
 	

@@ -1,13 +1,15 @@
 package ac.software.semantic.payload;
 
-import java.util.ArrayList;
 import java.util.Date;
+import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-import ac.software.semantic.model.DatasetState;
-import ac.software.semantic.model.MappingState;
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.state.MappingState;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class FileResponse {
     private String id;
     private String name;
@@ -17,15 +19,30 @@ public class FileResponse {
     private String fileName;
 
     private DatasetState publishState;
+    private MappingState executeState;
     
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Date publishStartedAt;
     
     @JsonInclude(JsonInclude.Include.NON_NULL)
     private Date publishCompletedAt;
+
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Date executeStartedAt;
     
-    private ArrayList<String> files;
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private Date executeCompletedAt;
+
+    private List<String> files;
+
+//    private String url;
     
+    private boolean publishedFromCurrentFileSystem;
+   private boolean newExecution;
+	   
+   @JsonIgnore
+   private boolean legacy;
+
     public String getId() {
         return id;
     }
@@ -59,11 +76,11 @@ public class FileResponse {
 		this.uuid = uuid;
 	}
 	
-	public ArrayList<String> getFiles() {
+	public List<String> getFiles() {
 		return files;
 	}
 
-	public void setFiles(ArrayList<String> files) {
+	public void setFiles(List<String> files) {
 		this.files = files;
 	}
 
@@ -98,4 +115,61 @@ public class FileResponse {
 	public void setFileName(String fileName) {
 		this.fileName = fileName;
 	}
+
+	public MappingState getExecuteState() {
+		return executeState;
+	}
+
+	public void setExecuteState(MappingState executeState) {
+		this.executeState = executeState;
+	}
+	
+	public Date getExecuteStartedAt() {
+		return executeStartedAt;
+	}
+
+	public void setExecuteStartedAt(Date executeStartedAt) {
+		this.executeStartedAt = executeStartedAt;
+	}
+
+	public Date getExecuteCompletedAt() {
+		return executeCompletedAt;
+	}
+
+	public void setExecuteCompletedAt(Date executeCompletedAt) {
+		this.executeCompletedAt = executeCompletedAt;
+	}
+
+	public boolean isNewExecution() {
+		return newExecution;
+	}
+
+	public void setNewExecution(boolean newExecution) {
+		this.newExecution = newExecution;
+	}
+
+	public boolean isLegacy() {
+		return legacy;
+	}
+
+	public void setLegacy(boolean legacy) {
+		this.legacy = legacy;
+	}
+
+	public boolean isPublishedFromCurrentFileSystem() {
+		return publishedFromCurrentFileSystem;
+	}
+
+	public void setPublishedFromCurrentFileSystem(boolean publishedFromCurrentFileSystem) {
+		this.publishedFromCurrentFileSystem = publishedFromCurrentFileSystem;
+	}
+
+//	public String getUrl() {
+//		return url;
+//	}
+//
+//	public void setUrl(String url) {
+//		this.url = url;
+//	}
+
 }

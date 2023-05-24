@@ -3,10 +3,17 @@ package ac.software.semantic.model;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+import ac.software.semantic.model.constants.MessageType;
+import ac.software.semantic.service.ExecuteMonitor;
 import edu.ntua.isci.ac.d2rml.model.D2RMLModel;
 import edu.ntua.isci.ac.d2rml.model.dataset.LogicalDataset;
 import edu.ntua.isci.ac.d2rml.model.informationsource.D2RMLSource;
+import edu.ntua.isci.ac.d2rml.monitor.Failure;
+import edu.ntua.isci.ac.d2rml.monitor.MonitorWrap;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class ExecutionInfo {
 	private String triplesMap;
 	private String dataSource;
@@ -19,6 +26,8 @@ public class ExecutionInfo {
 	private boolean failed;
 	private boolean completed;
 	private boolean started;
+	
+	private List<NotificationMessage> messages;
 	
 	public ExecutionInfo(String triplesMap, String dataSource) {
 		this.triplesMap = triplesMap;
@@ -129,5 +138,48 @@ public class ExecutionInfo {
 	public void setFailed(boolean failed) {
 		this.failed = failed;
 	}
+
+	public List<NotificationMessage> getMessages() {
+		return messages;
+	}
+
+	public void setMessages(List<NotificationMessage> messages) {
+		this.messages = messages;
+	}
 	
+	public void buildMessages(MonitorWrap currentWrap) {
+		this.messages = null;
+		
+		if (currentWrap.getFailures() != null && currentWrap.getFailures().size() > 0) {
+			List<NotificationMessage> res = new ArrayList<>();
+			
+			int count = 0;
+			for (Failure f : currentWrap.getFailures()) {
+				res.add(new NotificationMessage(MessageType.ERROR, f.getException().getMessage()));
+				
+				if (count++ > ExecuteMonitor.MAX_MESSAGES) {
+					break;
+				}
+			}
+			this.messages = res;
+		}
+
+	}
+	
+	public static ExecutionInfo createFromMonitorWrap(MonitorWrap mw) {
+		ExecutionInfo ei = new ExecutionInfo(mw.getTriplesMap().getName().toString(), mw.getDataSource().getSourceURI() != null ? mw.getDataSource().getSourceURI().toString() : "");
+		if (mw.getStream() != null) {
+			ei.setKey(mw.getStream().getCurrentKey());
+			ei.setPartialCount(mw.getStream().getPartialCount());
+			ei.setTotalCount(mw.getStream().getCurrentCount());
+		}
+		ei.setFailures(mw.getFailures().size());
+		ei.setStarted(mw.isStarted());
+		ei.setCompleted(mw.isCompleted());
+		ei.setFailed(mw.isFailed());
+		ei.buildMessages(mw);
+		
+		return ei;
+	}
+
 }

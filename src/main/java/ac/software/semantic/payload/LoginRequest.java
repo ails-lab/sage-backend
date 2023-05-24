@@ -3,12 +3,16 @@ package ac.software.semantic.payload;
 
 import javax.validation.constraints.NotBlank;
 
+import ac.software.semantic.model.constants.UserRoleType;
+
 public class LoginRequest {
     @NotBlank
     private String email;
 
     @NotBlank
     private String password;
+    
+    private UserRoleType role; 
 
     public String getEmail() {
         return email;
@@ -25,5 +29,13 @@ public class LoginRequest {
     public void setPassword(String password) {
         this.password = password;
     }
+
+	public UserRoleType getRole() {
+		return role;
+	}
+
+	public void setRole(UserRoleType role) {
+		this.role = role;
+	}
 }
 

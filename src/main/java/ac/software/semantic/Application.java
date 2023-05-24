@@ -43,11 +43,12 @@ import org.springframework.integration.sftp.outbound.SftpMessageHandler;
 import org.springframework.integration.sftp.session.SftpRemoteFileTemplate;
 import org.springframework.integration.support.MessageBuilder;
 import org.springframework.messaging.Message;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.util.FileCopyUtils;
 
+import ac.software.semantic.config.ConfigurationContainer;
 import ac.software.semantic.controller.APIIndexController;
-import ac.software.semantic.controller.ExecuteMonitor;
 import ac.software.semantic.model.AnnotationEdit;
 import ac.software.semantic.model.AnnotatorDocument;
 import ac.software.semantic.model.Database;
@@ -56,8 +57,7 @@ import ac.software.semantic.model.ElasticConfiguration;
 import ac.software.semantic.model.FileSystemConfiguration;
 import ac.software.semantic.model.PagedAnnotationValidation;
 import ac.software.semantic.model.SemanticProperty;
-import ac.software.semantic.model.UserType;
-import ac.software.semantic.model.VirtuosoConfiguration;
+import ac.software.semantic.model.TripleStoreConfiguration;
 import ac.software.semantic.repository.AnnotationEditGroupRepository;
 import ac.software.semantic.repository.AnnotationEditRepository;
 import ac.software.semantic.repository.AnnotatorDocumentRepository;
@@ -70,14 +70,18 @@ import ac.software.semantic.repository.UserRepository;
 import ac.software.semantic.service.CollectionsService;
 import ac.software.semantic.service.DatabaseConfigurationService;
 import ac.software.semantic.service.DatabaseService;
+import ac.software.semantic.service.ExecuteMonitor;
 import ac.software.semantic.service.IndexService;
+import ac.software.semantic.service.LodViewService;
 import ac.software.semantic.service.PagedAnnotationValidationService;
+import ac.software.semantic.service.TaskService;
 import ac.software.semantic.service.UserService;
 
 @SpringBootApplication
 @IntegrationComponentScan
 @EnableIntegration
 @EnableScheduling
+@EnableAsync(proxyTargetClass = true)
 public class Application implements CommandLineRunner {
 
 	@Autowired
@@ -92,22 +96,31 @@ public class Application implements CommandLineRunner {
 
 	@Autowired
 	private UserService userService;
-	
+
+	@Autowired
+	private TaskService taskService;
+
+	@Autowired
+	private LodViewService lodViewService;
 
     @Value("${app.schema.legacy-uris}")
     private boolean legacyUris;
+
+    @Autowired
+    @Qualifier("system-mac-address")
+    private String mac;
     
     @Autowired
     @Qualifier("database")
     private Database database;
 
 	@Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfiguration;
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> tripleStoreConfigurations;
 	
     @Autowired
-    @Qualifier("elastic-configuration")
-    private ElasticConfiguration elasticConfiguration;
+    @Qualifier("elastic-configurations")
+    private ConfigurationContainer<ElasticConfiguration> elasticConfigurations;
 
     @Autowired
     @Qualifier("filesystem-configuration")
@@ -125,18 +138,31 @@ public class Application implements CommandLineRunner {
 		
 		logger.info("Using legacy scheme uris: " + legacyUris);
 		
-		logger.info("Current database: " + database.getName() + ".");
-		String s = "";
-		for (Map.Entry<String, VirtuosoConfiguration> entry : virtuosoConfiguration.entrySet()) {
-			if (s.length() > 0) {
-				s += ", ";
-			}
-			s += entry.getKey() + " @ " + entry.getValue().getSparqlEndpoint();
-		}
-		logger.info("Current virtuoso: " + s);
-		logger.info("Current file system: " + fileSystemConfiguration.getName() + " @ " + fileSystemConfiguration.getDataFolder());
-		logger.info("Current elastic index: " + elasticConfiguration.getName() + " @ " + elasticConfiguration.getIndexIp());
+		logger.info("System MAC address: " + mac + ".");
 		
+		logger.info("Current database: " + database.getName() + ".");
+		String vs = "";
+		for (Map.Entry<String, TripleStoreConfiguration> entry : tripleStoreConfigurations.getNameMap().entrySet()) {
+			if (vs.length() > 0) {
+				vs += ", ";
+			}
+			vs += entry.getKey() + " @ " + entry.getValue().getSparqlEndpoint();
+		}
+		logger.info("Current triple stores: " + vs);
+		logger.info("Current file system: " + fileSystemConfiguration.getName() + " @ " + fileSystemConfiguration.getDataFolder());
+		String es = "";
+		for (Map.Entry<String, ElasticConfiguration> entry : elasticConfigurations.getNameMap().entrySet()) {
+			if (es.length() > 0) {
+				es += ", ";
+			}
+			es += entry.getKey() + " @ " + entry.getValue().getIndexIp() + ":" + entry.getValue().getIndexPort();
+		}
+		logger.info("Current elasticsearches: " + es);
+		
+		logger.info("Failing unfinished tasks ");
+		taskService.failUnfinishedTasks();
+		
+		lodViewService.updateLodView();
 	
 //		VirtuosoConfiguration vc = virtuosoConfiguration.get("stirdata-1-virtuoso-chameleon");
 //		sftpUploadGateway.upload(new File("d:/data/tt4.xml"), vc);
@@ -146,7 +172,7 @@ public class Application implements CommandLineRunner {
 
 		userService.addMissingDatabaseUsersToVirtuoso();
 		
-		checkIndices();
+//		checkIndices();
 		
 //		Message<Boolean> fileDeleteRequest = MessageBuilder.withPayload(true)
 //	    		   .setHeader(FileHeaders.REMOTE_DIRECTORY, "imports/")
@@ -182,17 +208,19 @@ public class Application implements CommandLineRunner {
 	}
 	
 	private void checkIndices() {
+		ElasticConfiguration ec = elasticConfigurations.values().iterator().next(); //legacy get first!
+		
 		try(RestHighLevelClient client = new RestHighLevelClient(
 		        RestClient.builder(
-		                new HttpHost(elasticConfiguration.getIndexIp(), 9200, "http")))) {
+		                new HttpHost(ec.getIndexIp(), 9200, "http")))) {
 		
-			GetIndexRequest getRequest = new GetIndexRequest(elasticConfiguration.getIndexDataName()); 
+			GetIndexRequest getRequest = new GetIndexRequest(ec.getIndexDataName()); 
 				
 			logger.info("Data index: " + client.indices().exists(getRequest, RequestOptions.DEFAULT));
 			
 			if (!client.indices().exists(getRequest, RequestOptions.DEFAULT)) {
 			
-				CreateIndexRequest request = new CreateIndexRequest(elasticConfiguration.getIndexDataName());
+				CreateIndexRequest request = new CreateIndexRequest(ec.getIndexDataName());
 				
 //				request.settings( 
 //						"{ " +
@@ -263,13 +291,13 @@ public class Application implements CommandLineRunner {
 				client.indices().create(request, RequestOptions.DEFAULT);
 			}		
 
-			getRequest = new GetIndexRequest(elasticConfiguration.getIndexVocabularyName()); 
+			getRequest = new GetIndexRequest(ec.getIndexVocabularyName()); 
 			
 			logger.info("Vocabulary index: " + client.indices().exists(getRequest, RequestOptions.DEFAULT));
 			
 			if (!client.indices().exists(getRequest, RequestOptions.DEFAULT)) {
 			
-				CreateIndexRequest request = new CreateIndexRequest(elasticConfiguration.getIndexVocabularyName());
+				CreateIndexRequest request = new CreateIndexRequest(ec.getIndexVocabularyName());
 				
 				  request.mapping("_doc", //??????
 						" { " +

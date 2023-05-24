@@ -3,73 +3,42 @@ package ac.software.semantic.security;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 
 import ac.software.semantic.model.User;
-import ac.software.semantic.model.UserType;
+import ac.software.semantic.model.constants.UserRoleType;
 
-import org.bson.types.ObjectId;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 import java.util.Objects;
-import java.util.stream.Collectors;
 
 public class UserPrincipal implements UserDetails {
     private String id;
 
-//    private String name;
-
     private String email;
     private String uuid;
-
-//    @JsonIgnore
-//    private String email;
 
     @JsonIgnore
     private String password;
     
-    private UserType type;
+    private UserRoleType type;
 
     private Collection<? extends GrantedAuthority> authorities;
-
-    public UserPrincipal(String id, String email, String password, String uuid, UserType type) {//, Collection<? extends GrantedAuthority> authorities) {
-        this.id = id;
-        this.email = email;
-        this.password = password;
-        this.uuid = uuid;
-        this.type = type;
-//        this.authorities = authorities;
+    
+    public UserPrincipal(User user) {
+        this.id = user.getId().toString();
+        this.email = user.getEmail();
+        this.password = user.getBCryptPassword();
+        this.uuid =  user.getUuid();
         this.authorities = new ArrayList<>();
-    }
-
-    public static UserPrincipal create(User user) {
-//        List<GrantedAuthority> authorities = user.getRoles().stream().map(role ->
-//                new SimpleGrantedAuthority(role.getName().name())
-//        ).collect(Collectors.toList());
-
-        return new UserPrincipal(
-                user.getId().toString(),
-                user.getEmail(),
-                user.getBCryptPassword(),
-                user.getUuid(),
-                user.getType()
-//                authorities
-        );
     }
 
     public String getId() {
         return id;
     }
-
-//    public String getName() {
-//        return name;
-//    }
-//
-//    public String getEmail() {
-//        return email;
-//    }
     
     /*
         I had to override the getUsername method.
@@ -80,11 +49,6 @@ public class UserPrincipal implements UserDetails {
     public String getUsername() {
         return email;
     }
-
-    // @Override
-    // public String getEmail() {
-    //     return email;
-    // }
 
     @Override
     public String getPassword() {
@@ -98,8 +62,9 @@ public class UserPrincipal implements UserDetails {
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         List<SimpleGrantedAuthority> authorities = new ArrayList<>();
-        authorities.add(new SimpleGrantedAuthority(type.toString()));
-//        System.out.println(authorities);
+        if (type != null) {
+        	authorities.add(new SimpleGrantedAuthority(type.toString()));
+        }
         return authorities;
     }
 
@@ -137,11 +102,11 @@ public class UserPrincipal implements UserDetails {
         return Objects.hash(id);
     }
 
-	public UserType getType() {
+	public UserRoleType getType() {
 		return type;
 	}
 
-	public void setType(UserType type) {
+	public void setType(UserRoleType type) {
 		this.type = type;
 	}
 }

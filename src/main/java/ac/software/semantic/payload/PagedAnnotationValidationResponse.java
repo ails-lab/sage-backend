@@ -5,10 +5,14 @@ import java.util.List;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
-import ac.software.semantic.model.DatasetState;
-import ac.software.semantic.model.MappingState;
+import ac.software.semantic.model.NotificationMessage;
+import ac.software.semantic.model.PathElement;
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.state.MappingState;
+import ac.software.semantic.model.state.PagedAnnotationValidationState;
 
-public class PagedAnnotationValidationResponse {
+@JsonInclude(JsonInclude.Include.NON_NULL)
+public class PagedAnnotationValidationResponse implements Response {
 
 	private String id;
 	
@@ -19,7 +23,7 @@ public class PagedAnnotationValidationResponse {
 	private String annotationEditGroupId;
 	
 	private String datasetUuid;
-	private List<String> onProperty;
+	private List<PathElement> onProperty;
 	private String asProperty;
 
 	private int annotatedPagesCount;
@@ -29,19 +33,26 @@ public class PagedAnnotationValidationResponse {
 	
 	private MappingState executeState;
 	private DatasetState publishState;
+	
+	private PagedAnnotationValidationState lifecycleState;
+	
+	private List<NotificationMessage> executeMessages;
 
-	@JsonInclude(JsonInclude.Include.NON_NULL)
+	private String mode;
+	
+	private Date lifecycleStartedAt; 
+	private Date lifecycleCompletedAt;
+	
 	private Date executeStartedAt;
-
-	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private Date executeCompletedAt;
+	private Integer executeCount;
 
-	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private Date publishStartedAt;
-
-	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private Date publishCompletedAt;
-
+	
+	private boolean publishedFromCurrentFileSystem;
+	private boolean newExecution;
+	
 	public PagedAnnotationValidationResponse() {
 
 	}
@@ -78,11 +89,11 @@ public class PagedAnnotationValidationResponse {
 		this.datasetUuid = datasetUuid;
 	}
 
-	public List<String> getOnProperty() {
+	public List<PathElement> getOnProperty() {
 		return onProperty;
 	}
 
-	public void setOnProperty(List<String> onProperty) {
+	public void setOnProperty(List<PathElement> onProperty) {
 		this.onProperty = onProperty;
 	}
 
@@ -172,6 +183,70 @@ public class PagedAnnotationValidationResponse {
 
 	public void setUuid(String uuid) {
 		this.uuid = uuid;
+	}
+
+	public PagedAnnotationValidationState getLifecycleState() {
+		return lifecycleState;
+	}
+
+	public void setLifecycleState(PagedAnnotationValidationState lifecycleState) {
+		this.lifecycleState = lifecycleState;
+	}
+
+	public Date getLifecycleStartedAt() {
+		return lifecycleStartedAt;
+	}
+
+	public void setLifecycleStartedAt(Date lifecycleStartedAt) {
+		this.lifecycleStartedAt = lifecycleStartedAt;
+	}
+
+	public Date getLifecycleCompletedAt() {
+		return lifecycleCompletedAt;
+	}
+
+	public void setLifecycleCompletedAt(Date lifecycleCompletedAt) {
+		this.lifecycleCompletedAt = lifecycleCompletedAt;
+	}
+
+	public String getMode() {
+		return mode;
+	}
+
+	public void setMode(String mode) {
+		this.mode = mode;
+	}
+
+	public List<NotificationMessage> getExecuteMessages() {
+		return executeMessages;
+	}
+
+	public void setExecuteMessages(List<NotificationMessage> executeMessages) {
+		this.executeMessages = executeMessages;
+	}
+
+	public boolean isPublishedFromCurrentFileSystem() {
+		return publishedFromCurrentFileSystem;
+	}
+
+	public void setPublishedFromCurrentFileSystem(boolean publishedFromCurrentFileSystem) {
+		this.publishedFromCurrentFileSystem = publishedFromCurrentFileSystem;
+	}
+
+	public boolean isNewExecution() {
+		return newExecution;
+	}
+
+	public void setNewExecution(boolean newExecution) {
+		this.newExecution = newExecution;
+	}
+
+	public Integer getExecuteCount() {
+		return executeCount;
+	}
+
+	public void setExecuteCount(Integer executeCount) {
+		this.executeCount = executeCount;
 	}
 
 }

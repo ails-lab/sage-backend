@@ -14,11 +14,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
+import ac.software.semantic.config.ConfigurationContainer;
 import ac.software.semantic.model.AlignmentDescriptor;
 import ac.software.semantic.model.GraphDescriptor;
-import ac.software.semantic.model.VirtuosoConfiguration;
-import edu.ntua.isci.ac.lod.vocabularies.sema.SEMAVocabulary;
-
+import ac.software.semantic.model.TripleStoreConfiguration;
+import ac.software.semantic.vocs.SEMRVocabulary;
+import ac.software.semantic.vocs.SEMAVocabulary;
 
 @Service
 public class CollectionsService {
@@ -27,9 +28,12 @@ public class CollectionsService {
 //	private String endpoint;	
 
     @Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfiguration;
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfiguration;
     
+	@Autowired
+	private SEMRVocabulary resourceVocabulary;
+	
 //	@Autowired
 //	Virtuoso virtuoso;
 //
@@ -45,10 +49,10 @@ public class CollectionsService {
 		GraphDescriptor res = null;
 		String sparql = 
 				"SELECT ?url WHERE { " +
-		        " GRAPH <" + SEMAVocabulary.contentGraph + "> { " +
+		        " GRAPH <" + resourceVocabulary.getContentGraphResource() + "> { " +
 		            " ?url <http://purl.org/dc/elements/1.1/identifier> <" + identifier + "> } }";
 
-		try (QueryExecution qe = QueryExecutionFactory.sparqlService(virtuosoConfiguration.get(virtuoso).getSparqlEndpoint(), QueryFactory.create(sparql, Syntax.syntaxARQ))) {
+		try (QueryExecution qe = QueryExecutionFactory.sparqlService(virtuosoConfiguration.getByName(virtuoso).getSparqlEndpoint(), QueryFactory.create(sparql, Syntax.syntaxARQ))) {
 			ResultSet rs = qe.execSelect();
 		
 			while (rs.hasNext()) {
@@ -65,10 +69,10 @@ public class CollectionsService {
 		List<AlignmentDescriptor> res = new ArrayList<>();
 		String sparql = 
 				"SELECT ?a ?aid ?s ?sid ?t ?tid WHERE { " +
-		        " GRAPH <" + SEMAVocabulary.contentGraph + "> { " +
-		            " ?a a <http://sw.islab.ntua.gr/semaspace/model/Alignment> . " +
-		            " ?a <http://sw.islab.ntua.gr/semaspace/model/source> ?s . " +
-		            " ?a <http://sw.islab.ntua.gr/semaspace/model/target> ?t . " +
+		        " GRAPH <" + resourceVocabulary.getContentGraphResource() + "> { " +
+		            " ?a a <" + SEMAVocabulary.Alignment + "> . " +
+		            " ?a <" + SEMAVocabulary.source + "> ?s . " +
+		            " ?a <" + SEMAVocabulary.target + "> ?t . " +
 		            " ?a <http://purl.org/dc/elements/1.1/identifier> ?aid . " +
 		            " ?s a <" + type + "> . " +
 		            " ?s <http://purl.org/dc/elements/1.1/identifier> ?sid . " +
@@ -78,7 +82,7 @@ public class CollectionsService {
 
 //		System.out.println(QueryFactory.create(sparql, Syntax.syntaxARQ));
 		
-		try (QueryExecution qe = QueryExecutionFactory.sparqlService(virtuosoConfiguration.get(virtuoso).getSparqlEndpoint(), QueryFactory.create(sparql, Syntax.syntaxARQ))) {
+		try (QueryExecution qe = QueryExecutionFactory.sparqlService(virtuosoConfiguration.getByName(virtuoso).getSparqlEndpoint(), QueryFactory.create(sparql, Syntax.syntaxARQ))) {
 			ResultSet rs = qe.execSelect();
 		
 			while (rs.hasNext()) {

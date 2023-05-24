@@ -12,7 +12,7 @@
 @prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
 @prefix cnt: <http://www.w3.org/2011/content#> .
 
-@prefix collection:    <http://sw.islab.ntua.gr/semaspace/resource/annotation/> .
+@prefix collection: <{##ppRESOURCE_PREFIX##}>
 @prefix model: <http://sw.islab.ntua.gr/semaspace/model/>
 
 <#SPARQLEndpoint>
@@ -74,11 +74,16 @@
  #is:string "This is the earliest example of a seaside publicity film in Screen Archive South Eastu2019s collection, dating from the mid 1920s. The film promotes Margate as a most fashionable seaside resort. The film is tinted and toned and has intertitles throughout.".
 # is:string "Footage of a parade, opening with the Worthing Musical Society float; vintage cars and floats from the Worthing Yacht Club and 'Buffalo Bill's Wild West Show' follow, with members of the cast (including the film-maker's wife, Kay) posing for the camera, before further floats pass \"The Berkeley Hotel.\" There is footage of Kay in her garden, posing in her parade costume. Their daughter Alexis, a toddler, plays on the steps of their house opening and closing the door." .
       
+  
+<#ExecuteSpecification>
+   a dr:D2RMLSpecification ;
+   dr:logicalDatasets ( <#EnrichMapping> ) .
+      
 <#EnrichMapping>  
    a  <http://islab.ntua.gr/ns/d2rml#PrimaryTriplesMap> ;
    rr:logicalTable [ 
       dr:source <#SPARQLEndpoint> ;
-      dr:sparqlQuery "SELECT ?id ?literal ?lexicalValue ?language WHERE { GRAPH <{@@iigraph@@}> { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) } }" ;      
+      dr:sparqlQuery "SELECT ?id ?literal ?lexicalValue ?language {@@iigraph@@} WHERE { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) }" ;      
 #      dr:source <#TMPSource> ;
 #      a dr:TextTable ;
 	  is:parameters ( [ 
@@ -156,15 +161,15 @@
 			  ] ;
 		   ] ;
 		   rr:predicateObjectMap [
-		      rr:predicate <http://sw.islab.ntua.gr/annotation/start> ;
+		      rr:predicate oa:start ;
 			  rr:objectMap [
                  rr:column "$.offset";
                  dr:transformationReference <#AIDAMapping2> ;
-				 rr:datatype xsd:integer;
+				 rr:datatype xsd:nonNegativeInteger;
 			  ] ;
 		   ] ;
 		   rr:predicateObjectMap [
-		      rr:predicate <http://sw.islab.ntua.gr/annotation/end> ;
+		      rr:predicate oa:end ;
 			  rr:objectMap [
 			     dr:definedColumn [
                     dr:name "END" ;
@@ -189,7 +194,7 @@
                     ] ;
                  ] ;
                  rr:column "END";
-				 rr:datatype xsd:integer;
+				 rr:datatype xsd:nonNegativeInteger;
 			  ] ;
 		   ] ;
 		];

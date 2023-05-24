@@ -1,0 +1,78 @@
+@prefix dct:   <http://purl.org/dc/terms/> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix minto: <http://ails.ece.ntua.gr/mint/ontology/> .
+@prefix kvoc:  <http://sw.islab.ntua.gr/semaspace/model/> .
+@prefix edm:   <http://www.europeana.eu/schemas/edm/> .
+
+@prefix rr:    <http://www.w3.org/ns/r2rml#> .
+@prefix dr:    <http://islab.ntua.gr/ns/d2rml#> .
+@prefix dris:  <http://islab.ntua.gr/ns/d2rml-is#> .
+@prefix drop:  <http://islab.ntua.gr/ns/d2rml-op#> .
+
+<{@@SAGE_TEMPLATE_MAPPING_URI@@}/Specification>
+	a                   dr:D2RMLSpecification ;
+	dr:logicalDatasets  ( <{@@SAGE_TEMPLATE_MAPPING_URI@@}/HeaderMapping> ) ;
+	dr:parameter        [ drop:name  "TITLE" ] .
+
+<{@@SAGE_TEMPLATE_MAPPING_URI@@}/HeaderMapping>
+    rr:subjectMap [
+		rr:constant <{@@SAGE_TEMPLATE_DATASET_URI@@}> ;
+	] ;
+    
+    rr:predicateObjectMap  [ 
+		rr:predicate  dct:title ;
+    	rr:objectMap     [ 
+    		rr:constant  "{@@TITLE@@}" ;
+			rr:termType  rr:Literal ;
+		] ;
+	] ;
+    
+    rr:predicateObjectMap  [ 
+		rr:predicate  rdfs:label ;
+    	rr:objectMap     [ 
+    		rr:constant  "{@@TITLE@@}" ;
+            rr:termType  rr:Literal ;
+		] ;
+	] ;
+	
+	rr:predicateObjectMap  [ 
+		rr:predicate kvoc:class ;
+
+		rr:objectMap     [ 
+			rr:parentTriplesMap  [ 
+                rr:subjectMap          [ 
+                	rr:class     kvoc:CollectionResource ;
+					rr:termType  rr:BlankNode ;
+				] ;
+				
+				rr:predicateObjectMap  [ 
+					rr:predicate  kvoc:uri ;
+					rr:object  edm:ProvidedCHO ;
+				] ;
+			] ;
+		] ;
+		
+		rr:objectMap     [ 
+			rr:parentTriplesMap  [ 
+                rr:subjectMap          [ 
+                	rr:class     kvoc:CollectionResource ;
+					rr:termType  rr:BlankNode ;
+                ] ;
+
+                rr:predicateObjectMap  [ 
+					rr:predicate kvoc:uri ;
+                	rr:object minto:Item ;
+				] ;
+				
+				rr:predicateObjectMap  [ 
+                    rr:predicate  kvoc:prefix ;
+					rr:objectMap     [ 
+						rr:template  "{@@SAGE_TEMPLATE_ITEM_BASE@@}mint/item/" ;
+						rr:termType  rr:IRI ;
+                    ] ;
+				] ;
+			] ;
+		] ;
+	] .
+    

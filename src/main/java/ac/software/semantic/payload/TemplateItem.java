@@ -1,7 +1,7 @@
 package ac.software.semantic.payload;
 
 import ac.software.semantic.model.Template;
-import ac.software.semantic.model.TemplateType;
+import ac.software.semantic.model.constants.TemplateType;
 
 import java.util.Map;
 

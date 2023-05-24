@@ -12,7 +12,7 @@
 @prefix op:  <http://islab.ntua.gr/ns/d2rml-op#> .
 @prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
 
-@prefix collection:    <http://sw.islab.ntua.gr/semaspace/resource/annotation/> .
+@prefix collection: <{##ppRESOURCE_PREFIX##}>
 @prefix model: <http://sw.islab.ntua.gr/semaspace/model/>
 
 <#SPARQLEndpoint>
@@ -75,7 +75,7 @@
 <#EntityLookupTransformation>  
    rr:logicalTable [ 
       dr:source <#SPARQLEndpoint> ;
-      dr:sparqlQuery "SELECT ?id WHERE { GRAPH <{@@iigraph@@}> { ?id {@@iiproperty@@} {@@literal@@} } }" ;
+      dr:sparqlQuery "SELECT ?id {@@iigraph@@} WHERE { ?id {@@iiproperty@@} {@@literal@@} }" ;
    ] ;
    dr:parameterBinding [ 
       dr:parameter "iirdfsource" ;
@@ -101,11 +101,15 @@
 #         is:string "Υπουργείο Οικονομικών, Κληροδοτήματα, Δημοπρασίες, Ερρίκος Σκάσσης, πρύτανης, Ενοικιάσεις, Κτήματα, Ακίνητη Περιουσία, Οικονομικό Συμβούλιο, Προκηρύξεις, Αναφορές, Αιτήσεις, Ανώνυμος Ελληνική Τηλεφωνική Εταιρία, Επισκευές, Εργασίες, Γρηγόριος Ξενόπουλος, ενοικιαστής, Συνεργαζόμενοι Επαγγελματίες σε Εργασίες του Πανεπιστημίου, Ονόματα, Φορολογία, Κατοχή, Αρχές Κατοχής, Στέγαση, Επιτάξεις, Εκμισθώσεις, Βασίλειος Μακρής, γενικός γραμματέας " .
      
    
+<#ExecuteSpecification>
+   a dr:D2RMLSpecification ;
+   dr:logicalDatasets ( <#EnrichMapping> ) .
+   
 <#EnrichMapping>  
    a  <http://islab.ntua.gr/ns/d2rml#PrimaryTriplesMap> ;
    rr:logicalTable [ 
       dr:source <#SPARQLEndpoint> ;
-      dr:sparqlQuery "SELECT DISTINCT ?literal ?lexicalValue ?language WHERE { GRAPH <{@@iigraph@@}> { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) } }" ;
+      dr:sparqlQuery "SELECT DISTINCT ?literal ?lexicalValue ?language {@@iigraph@@} WHERE { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) }" ;
 #      dr:source <#TMPSource> ;
 #      a dr:TextTable ;
 	  is:parameters ( [ 

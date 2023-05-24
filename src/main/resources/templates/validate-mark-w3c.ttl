@@ -1,0 +1,73 @@
+@prefix rr:    <http://www.w3.org/ns/r2rml#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix http: 	<http://www.w3.org/2011/http#> .
+@prefix time: <http://www.w3.org/2006/time#> .
+@prefix oa: <http://www.w3.org/ns/oa#> .
+@prefix as: <https://www.w3.org/ns/activitystreams#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+
+@prefix dr:   <http://islab.ntua.gr/ns/d2rml#> .
+@prefix op:  <http://islab.ntua.gr/ns/d2rml-op#> .
+@prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
+
+@prefix collection: <{##ppRESOURCE_PREFIX##}>
+
+<#SPARQLService>
+   a is:SPARQLService ;
+   is:uri "{@@iirdfsource@@}" .
+   
+<#ValidateMapping>  
+   rr:logicalTable [ 
+      dr:source <#SPARQLService> ;
+      dr:sparqlQuery "{@@iisparql@@}" ;
+	  is:parameters ( [ 
+         a is:ExternalVariable;
+         is:name "iisparql" ;
+      ] );
+   ] ;
+   dr:definedColumn [
+      dr:name "SCOPE";
+      dr:function op:identity ;
+      dr:parameterBinding [ 
+         dr:parameter "input" ;
+         rr:constant "{@@scope@@}" ;
+      ] ;
+   ] ;
+   
+   rr:subjectMap [ 
+      rr:column  "annotation" ;
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate  <http://sw.islab.ntua.gr/annotation/hasValidation> ;
+      rr:objectMap [
+	      rr:parentTriplesMap [
+	         rr:subjectMap [ 
+	            rr:termType rr:BlankNode ;
+	         ] ;
+	         rr:predicateObjectMap [ 
+	            rr:predicate as:generator ;
+	            rr:objectMap [
+	               rr:constant "{@@validator@@}" ; 
+	               rr:termType rr:IRI ;
+	            ] ;
+	         ] ;
+	         rr:predicateObjectMap [ 
+	            rr:predicate <http://sw.islab.ntua.gr/annotation/action> ;
+	            rr:objectMap [
+	               rr:constant "{@@action@@}" ; 
+	               rr:termType rr:IRI ;
+	            ] ;
+	         ] ;
+	         rr:predicateObjectMap [ 
+	            rr:predicate oa:hasScope ;
+	            rr:objectMap [
+	               rr:column "SCOPE" ; 
+	               rr:termType rr:IRI ;
+	            ] ;
+	         ] ;
+	      ] ;
+	   ] ;
+   ] .
+   
+

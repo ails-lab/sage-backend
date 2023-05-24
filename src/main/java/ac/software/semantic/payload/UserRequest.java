@@ -1,7 +1,5 @@
 package ac.software.semantic.payload;
 
-import ac.software.semantic.model.UserType;
-
 public class UserRequest {
     private String username;
     private String password;

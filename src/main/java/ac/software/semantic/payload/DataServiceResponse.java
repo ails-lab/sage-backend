@@ -2,10 +2,13 @@ package ac.software.semantic.payload;
 
 import java.util.List;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
 import ac.software.semantic.model.DataService.DataServiceType;
 import ac.software.semantic.model.DataServiceParameter;
 import ac.software.semantic.model.DataServiceVariant;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class DataServiceResponse {
 
 	private String identifier;

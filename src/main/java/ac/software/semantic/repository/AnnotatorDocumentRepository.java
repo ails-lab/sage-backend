@@ -14,9 +14,13 @@ import ac.software.semantic.model.MappingDocument;
 @Repository
 public interface AnnotatorDocumentRepository extends MongoRepository<AnnotatorDocument, String> {
 
+	Optional<AnnotatorDocument> findById(ObjectId id);
+	
    List<AnnotatorDocument> findByUserId(ObjectId userId);
 
    Optional<AnnotatorDocument> findByIdAndUserId(ObjectId Id, ObjectId userId);
+   
+   Optional<AnnotatorDocument> findByUuid(String uuid);
 
    List<AnnotatorDocument> findByDatasetUuid(String datasetUuid);
    
@@ -27,7 +31,7 @@ public interface AnnotatorDocumentRepository extends MongoRepository<AnnotatorDo
    List<AnnotatorDocument> findByDatasetUuidAndOnPropertyAndAsPropertyAndUserId(String datasetUuid, String[] onProperty, String asProperty, ObjectId userId);
    
    List<AnnotatorDocument> findByAnnotatorEditGroupId(ObjectId aegId);
-
+   
 }
 
 

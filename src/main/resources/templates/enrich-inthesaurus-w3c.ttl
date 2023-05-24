@@ -8,150 +8,501 @@
 @prefix dcterms: <http://purl.org/dc/terms/> .
 
 @prefix dr:   <http://islab.ntua.gr/ns/d2rml#> .
-@prefix op:  <http://islab.ntua.gr/ns/d2rml-op#> .
-@prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
+@prefix drop:  <http://islab.ntua.gr/ns/d2rml-op#> .
+@prefix dris:  <http://islab.ntua.gr/ns/d2rml-is#> .
 
-@prefix collection:    <http://sw.islab.ntua.gr/semaspace/resource/annotation/> .
+@prefix collection: <{##ppRESOURCE_PREFIX##}>
+
 @prefix model: <http://sw.islab.ntua.gr/semaspace/model/>
 
+<#IsThesaurusLoadedSpecification>
+   a dr:D2RMLSpecification ;
+   dr:logicalDatasets ( <#IsThesaurusLoadedMapping> ) .
+
+<#UnloadThesaurusSpecification>
+   a dr:D2RMLSpecification ;
+   dr:logicalDatasets ( <#UnloadThesaurusMapping> ) .
+
+<#IsPreparedSpecification>
+   a dr:D2RMLSpecification ;
+   dr:logicalDatasets ( <#IsPreparedMapping> ) .
+
+<#PrepareSpecification>
+   a dr:D2RMLSpecification ;
+   dr:logicalDatasets ( <#PrepareMapping> ) .
+
+<#ExecuteSpecification>
+   a dr:D2RMLSpecification ;
+   dr:logicalDatasets ( <#EnrichMapping> ) .
+
+### IS THESAURUS LOADED
+
+<#IsThesaurusLoadedService>
+   a dris:HTTPSource ;
+   dris:request [ 
+      http:absoluteURI "http://apps.islab.ntua.gr/inknowledge/api/is-graph-loaded" ;
+	  http:methodName "POST" ;
+	  http:params ( 
+	                [ http:paramName "endpoint" ;             http:paramValue "{@@iithesaurus_endpoint@@}" ] 
+                  ) ;
+   ] ;
+   dris:parameter [ 
+      a dris:DataVariable;
+      dris:name "iithesaurus_endpoint" ;
+   ] .
+     
+<#IsThesaurusLoadedMapping>  
+   dr:logicalArray [ 
+      a dr:RegExItemArray ;
+      dr:source <#IsThesaurusLoadedService> ;
+      dr:iterator "(?s)(^.*$)" ;
+      dris:parameter [ 
+         a dris:DataVariable;
+         dris:name "iithesaurus_endpoint" ;
+      ] ;
+   ] ;
+   
+   rr:subjectMap [ 
+      rr:template "" ;
+      rr:termType rr:BlankNode;
+   ] ;
+   
+   rr:predicateObjectMap [
+      rr:predicate model:thesaurusLoaded ;
+      rr:objectMap [
+         dr:cases ( [
+            rr:constant true;
+            dr:condition [
+               rr:column "##1" ;
+               drop:eq "The thesaurus is loaded."
+            ] ;
+         ] [
+           rr:constant false;
+         ] ) ;
+      ] 
+   ] ;
+   
+   rr:predicateObjectMap [
+      rr:predicate model:thesaurusLoading ;
+      rr:objectMap [
+         dr:cases ( [
+            rr:constant true;
+            dr:condition [
+               rr:column "##1" ;
+               drop:eq "The thesaurus is being loaded."
+            ] ;
+         ] [
+           rr:constant false;
+         ] ) ;
+      ] 
+   ] .
+   
+### UNLOAD THESAURUS
+
+<#UnloadThesaurusService>
+   a dris:HTTPSource ;
+   dris:request [ 
+      http:absoluteURI "http://apps.islab.ntua.gr/inknowledge/api/graph-unload" ;
+	  http:methodName "POST" ;
+	  http:params ( 
+	                [ http:paramName "endpoint" ;             http:paramValue "{@@iithesaurus_endpoint@@}" ] 
+                  ) ;
+   ] ;
+   dris:parameter [ 
+      a dris:DataVariable;
+      dris:name "iithesaurus_endpoint" ;
+   ] .
+   
+<#UnloadThesaurusMapping>  
+   dr:logicalArray [ 
+      a dr:RegExItemArray ;
+      dr:source <#UnloadThesaurusService> ;
+      dr:iterator "(?s)(^.*$)" ;
+      dris:parameter [ 
+         a dris:DataVariable;
+         dris:name "iithesaurus_endpoint" ;
+      ] ;
+   ] ;
+   
+   rr:subjectMap [ 
+      rr:template "" ;
+      rr:termType rr:BlankNode;
+   ] ;
+   
+   rr:predicateObjectMap [
+      rr:predicate model:thesaurusUnloaded ;
+      rr:objectMap [
+         dr:cases ( [
+            rr:constant true;
+            dr:condition [
+               rr:column "##1" ;
+               drop:eq "The thesaurus has been unloaded."
+            ] ;
+         ] [
+            rr:constant true;
+            dr:condition [
+               rr:column "##1" ;
+               drop:eq "The thesaurus was not loaded."
+            ] ;
+         ] [
+           rr:constant false;
+         ] ) ;
+      ] 
+   ] .
+   
+      
+### CHECK PREPARED
+
+<#InKnowledgeIsPreparedService>
+   a dris:HTTPSource ;
+   dris:request [ 
+      http:absoluteURI "http://apps.islab.ntua.gr/inknowledge/api/is-graph-configuration-loaded" ;
+	  http:methodName "POST" ;
+	  http:params ( 
+	                [ http:paramName "endpoint" ;             http:paramValue "{@@iithesaurus_endpoint@@}" ] 
+	                [ http:paramName "lang" ;                 http:paramValue "{@@language@@}"      ] 
+	                [ http:paramName "scheme" ;               http:paramValue "{@@scheme@@}"    ] 
+	                [ http:paramName "mode" ;                 http:paramValue "{@@mode@@}"      ]
+	                [ http:paramName "lemmatizer" ;           http:paramValue "{@@lemmatizer@@}" ]
+                  ) ;
+   ] ;
+   dris:parameter [ 
+      a dris:DataVariable;
+      dris:name "iithesaurus_endpoint" ;
+   ] ;
+   dris:parameter [ 
+      a dris:DataVariable;
+      dris:name "scheme" ;
+   ] ;
+   dris:parameter [ 
+      a dris:DataVariable;
+      dris:name "language" ;
+   ] ;
+   dris:parameter [ 
+      a dris:DataVariable;
+      dris:name "mode" ;
+   ] ;
+   dris:parameter [ 
+      a dris:DataVariable;
+      dris:name "lemmatizer" ;
+   ] .
+   
+     
+<#IsPreparedMapping>  
+   dr:logicalArray [ 
+      a dr:RegExItemArray ;
+      dr:source <#InKnowledgeIsPreparedService> ;
+      dr:iterator "(?s)(^.*$)" ;
+      dris:parameter [ 
+         a dris:DataVariable;
+         dris:name "iithesaurus_endpoint" ;
+      ] ;
+      dris:parameter [ 
+         a dris:DataVariable;
+         dris:name "scheme" ;
+      ] ;
+      dris:parameter [ 
+         a dris:DataVariable;
+         dris:name "language" ;
+      ] ;
+      dris:parameter [ 
+         a dris:DataVariable;
+         dris:name "mode" ;
+      ] ;
+      dris:parameter [ 
+         a dris:DataVariable;
+         dris:name "lemmatizer" ;
+      ] ;
+   ] ;
+   
+   rr:subjectMap [ 
+      rr:template "" ;
+      rr:termType rr:BlankNode;
+   ] ;
+   
+   rr:predicateObjectMap [
+      rr:predicate model:annotatorPrepared ;
+      rr:objectMap [
+         dr:cases ( [
+            rr:constant true;
+            dr:condition [
+               rr:column "##1" ;
+               drop:eq "The thesaurus is loaded."
+            ] ;
+         ] [
+           rr:constant false;
+         ] ) ;
+      ] 
+   ] ;
+
+   rr:predicateObjectMap [
+      rr:predicate model:annotatorPreparing ;
+      rr:objectMap [
+         dr:cases ( [
+            rr:constant true;
+            dr:condition [
+               rr:column "##1" ;
+               drop:eq "The thesaurus is being loaded."
+            ] ;
+         ] [
+           rr:constant false;
+         ] ) ;
+      ] ;
+   ] .
+
+
+### PREPARE
+
+<#InKnowledgePrepareService>
+   a dris:HTTPSource ;
+   dris:request [ 
+      http:absoluteURI "http://apps.islab.ntua.gr/inknowledge/api/graph-load" ;
+	  http:methodName "POST" ;
+	  http:params ( 
+	                [ http:paramName "endpoint" ;             http:paramValue "{@@iithesaurus_endpoint@@}" ] 
+	                [ http:paramName "lang" ;                 http:paramValue "{@@language@@}"      ] 
+	                [ http:paramName "scheme" ;               http:paramValue "{@@scheme@@}"    ] 
+	                [ http:paramName "mode" ;                 http:paramValue "{@@mode@@}"      ]
+	                [ http:paramName "lemmatizer" ;           http:paramValue "{@@lemmatizer@@}" ]
+                  ) ;
+   ] ;
+   dris:parameter [ 
+      a dris:DataVariable;
+      dris:name "iithesaurus_endpoint" ;
+   ] ;
+   dris:parameter [ 
+      a dris:DataVariable;
+      dris:name "scheme" ;
+   ] ;
+   dris:parameter [ 
+      a dris:DataVariable;
+      dris:name "language" ;
+   ] ;
+   dris:parameter [ 
+      a dris:DataVariable;
+      dris:name "mode" ;
+   ] ;
+   dris:parameter [ 
+      a dris:DataVariable;
+      dris:name "lemmatizer" ;
+   ] .
+   
+     
+<#PrepareMapping>  
+   dr:logicalArray [ 
+      a dr:RegExItemArray ;
+      dr:source <#InKnowledgePrepareService> ;
+      dr:iterator "(?s)(^.*$)" ;
+      dris:parameter [ 
+         a dris:DataVariable;
+         dris:name "iithesaurus_endpoint" ;
+      ] ;
+      dris:parameter [ 
+         a dris:DataVariable;
+         dris:name "scheme" ;
+      ] ;
+      dris:parameter [ 
+         a dris:DataVariable;
+         dris:name "language" ;
+      ] ;
+      dris:parameter [ 
+         a dris:DataVariable;
+         dris:name "mode" ;
+      ] ;
+      dris:parameter [ 
+         a dris:DataVariable;
+         dris:name "lemmatizer" ;
+      ] ;
+   ] ;
+   
+   rr:subjectMap [ 
+      rr:template "" ;
+      rr:termType rr:BlankNode;
+   ] ;
+   
+   rr:predicateObjectMap [
+      rr:predicate model:annotatorPrepared ;
+      rr:objectMap [
+         dr:cases ( [
+            rr:constant true;
+            dr:condition [
+               rr:column "##1" ;
+               drop:eq "The thesaurus is already loaded."
+            ] ;
+         ] [
+           rr:constant false;
+         ] ) ;
+      ] 
+   ] ;
+
+   rr:predicateObjectMap [
+      rr:predicate model:annotatorPreparing ;
+      rr:objectMap [
+         dr:cases ( [
+            rr:constant true;
+            dr:condition [
+               rr:column "##1" ;
+               drop:eq "The thesaurus is already being loaded."
+            ] ;
+         ] [
+            rr:constant true;
+            dr:condition [
+               rr:column "##1" ;
+               drop:eq "The thesaurus has been scheduled for loading."
+            ] ;
+         ] [
+           rr:constant false;
+         ] ) ;
+      ] ;
+   ] .
+   
+
+### EXECUTE
 
 <#SPARQLEndpoint>
-   a is:SPARQLService ;
-   is:uri "{@@iirdfsource@@}" .
+   a dris:SPARQLEndpoint ;
+   dris:uri "{@@iirdfsource@@}" .
    
-<#InThesaurusService>
-   a is:HTTPSource ;
-   is:request [ 
+<#InKnowledgeLookupService>
+   a dris:HTTPSource ;
+   dris:request [ 
       http:absoluteURI "http://apps.islab.ntua.gr/inknowledge/api/graph-lookup" ;
 	  http:methodName "POST" ;
-	  http:params ( [ http:paramName "graph" ;                http:paramValue "{@@thesaurus@@}" ] 
+	  http:params ( 
+	                [ http:paramName "endpoint" ;             http:paramValue "{@@thesaurus@@}" ] 
 	                [ http:paramName "text" ;                 http:paramValue "{@@text@@}"      ] 
 	                [ http:paramName "text-lang" ;            http:paramValue "{@@textLang@@}"  ] 
 	                [ http:paramName "autodetect-text-lang" ; http:paramValue "{@@autoTextLang@@}"  ] 
 	                [ http:paramName "lang" ;                 http:paramValue "{@@lang@@}"      ] 
 	                [ http:paramName "scheme" ;               http:paramValue "{@@scheme@@}"    ] 
 	                [ http:paramName "mode" ;                 http:paramValue "{@@mode@@}"      ]
-	                [ http:paramName "lemmatize" ;            http:paramValue "{@@lemmatize@@}" ]
+	                [ http:paramName "lemmatizer" ;            http:paramValue "{@@lemmatizer@@}" ]
 	                [ http:paramName "full-text-match" ;      http:paramValue "{@@fullTextMatch@@}" ]
-	                [ http:paramName "database" ;             http:paramValue "{@@database@@}"  ] ) ;
+	              ) ;
    ] ;
-   is:parameters ( [ 
-      a is:DataVariable;
-      is:name "text" ;
+   dris:parameters ( [ 
+      a dris:DataVariable;
+      dris:name "text" ;
    ] [ 
-      a is:DataVariable;
-      is:name "graph" ;
+      a dris:DataVariable;
+      dris:name "endpoint" ;
    ] [ 
-      a is:DataVariable;
-      is:name "scheme" ;
+      a dris:DataVariable;
+      dris:name "scheme" ;
    ] [ 
-      a is:DataVariable;
-      is:name "lang" ;
+      a dris:DataVariable;
+      dris:name "lang" ;
    ] [ 
-      a is:DataVariable;
-      is:name "textLang" ;
+      a dris:DataVariable;
+      dris:name "textLang" ;
    ] [ 
-      a is:DataVariable;
-      is:name "autoTextLang" ;
+      a dris:DataVariable;
+      dris:name "autoTextLang" ;
    ] [ 
-      a is:DataVariable;
-      is:name "mode" ;
+      a dris:DataVariable;
+      dris:name "mode" ;
    ] [ 
-      a is:DataVariable;
-      is:name "lemmatize" ;
+      a dris:DataVariable;
+      dris:name "lemmatizer" ;
    ] [ 
-      a is:DataVariable;
-      is:name "fullTextMatch" ;
-   ] [ 
-      a is:DataVariable;
-      is:name "database" ;
-   ] ) .
+      a dris:DataVariable;
+      dris:name "fullTextMatch" ;
+   ]  ) .
    
-<#InThesaurusTransformation>
+   
+<#InKnowledgeLookupTransformation>
    dr:logicalSource [ 
-      dr:source <#InThesaurusService> ;
+      dr:source <#InKnowledgeLookupService> ;
       dr:iterator "$[*]";
-	  dr:referenceFormulation is:JSONPath;
-   ] ;
-   dr:parameterBinding [ 
-      dr:parameter "text" ;
-      rr:column "{##ppLEXICAL-VALUE##}" ;
-   ] ;
-   dr:parameterBinding [ 
-      dr:parameter "thesaurus" ;
-      rr:constant "{@@iithesaurus@@}" ;
-   ] ;
-   dr:parameterBinding [ 
-      dr:parameter "scheme" ;
-      rr:constant "{@@scheme@@}" ;
-   ] ;
-   dr:parameterBinding [ 
-      dr:parameter "lang" ;
-      rr:constant "{@@language@@}" ;
-   ] ;
-   dr:parameterBinding [ 
-      dr:parameter "textLang" ;
-      dr:icases ( [
-         rr:column "language" ;
-         dr:condition [
-	        op:neq "" ;
-	     ] ;
-	  ] [
-         rr:constant "{@@default-text-language@@}" ;
-  	  ] ) ;  
-   ] ;
-   dr:parameterBinding [ 
-      dr:parameter "autoTextLang" ;
-      rr:constant "{@@autodetect-text-language@@}" ;
-   ] ;   
-   dr:parameterBinding [ 
-      dr:parameter "mode" ;
-      rr:constant "{@@mode@@}" ;
-   ] ;  
-   dr:parameterBinding [ 
-      dr:parameter "lemmatize" ;
-      rr:constant "{@@lemmatize@@}" ;
-   ] ;   
-   dr:parameterBinding [ 
-      dr:parameter "fullTextMatch" ;
-      rr:constant "{@@full-text-match@@}" ;
-   ] ;    
-   dr:parameterBinding [ 
-      dr:parameter "database" ;
-      rr:constant "{@@iidatabase@@}" ;
+	  dr:referenceFormulation dris:JSONPath;
    ] .
-   
    
 <#EnrichMapping>  
    a  <http://islab.ntua.gr/ns/d2rml#PrimaryTriplesMap> ; 
+   
    rr:logicalTable [ 
       dr:source <#SPARQLEndpoint> ;
-      dr:sparqlQuery "SELECT ?id ?literal ?lexicalValue ?language WHERE { GRAPH <{@@iigraph@@}> { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) } }" ;            
-	  is:parameters ( [ 
-         a is:ExternalVariable;
-         is:name "iigraph" ;
+      dr:sparqlQuery "SELECT ?id ?literal ?lexicalValue ?language <{@@iigraph@@}> WHERE { ?id {@@iiproperty@@} ?literal . FILTER (isLiteral(?literal)) . BIND(STR(?literal) AS ?lexicalValue) . BIND(LANG(?literal) AS ?language) }" ;            
+	  dris:parameters ( [ 
+         a dris:ExternalVariable;
+         dris:name "iigraph" ;
       ] [ 
-         a is:ExternalVariable;
-         is:name "iiproperty" ;
+         a dris:ExternalVariable;
+         dris:name "iiproperty" ;
       ] ) ;
    ] ;
-   dr:transformations ( <#InThesaurusTransformation> ) ;
-   dr:pivot [ 
-      dr:transformationReference <#InThesaurusTransformation> ;
-   ] ;   
+   
    {##ppPREPROCESS##}
+   
+   dr:transformation [
+      dr:dataref <#InKnowledgeLookupTransformation> ;
+      dr:name "InKnowledgeLookupTransformation";
+      dr:parameterBinding [ 
+         dr:parameter "text" ;
+         rr:column "{##ppLEXICAL-VALUE##}" ;
+      ] ;
+      dr:parameterBinding [ 
+         dr:parameter "thesaurus" ;
+         rr:constant "{@@iithesaurus_endpoint@@}" ;
+      ] ;
+      dr:parameterBinding [ 
+         dr:parameter "scheme" ;
+         rr:constant "{@@scheme@@}" ;
+      ] ;
+      dr:parameterBinding [ 
+         dr:parameter "lang" ;
+         rr:constant "{@@language@@}" ;
+      ] ;
+      dr:parameterBinding [ 
+         dr:parameter "textLang" ;
+         dr:cases ( [
+            rr:constant "{@@force-text-language@@}" ;
+            dr:condition [
+               rr:constant "{@@force-text-language@@}" ;
+               drop:neq "" ;
+   	        ] ;
+	     ] [
+            rr:column "language" ;
+            dr:condition [
+               drop:neq "" ;
+   	        ] ;
+	     ] [
+            rr:constant "{@@default-text-language@@}" ;
+         ] ) ;  
+      ] ;
+      dr:parameterBinding [ 
+         dr:parameter "autoTextLang" ;
+         rr:constant "{@@autodetect-text-language@@}" ;
+      ] ;   
+      dr:parameterBinding [ 
+         dr:parameter "mode" ;
+         rr:constant "{@@mode@@}" ;
+      ] ;  
+      dr:parameterBinding [ 
+         dr:parameter "lemmatizer" ;
+         rr:constant "{@@lemmatizer@@}" ;
+      ] ;   
+      dr:parameterBinding [ 
+         dr:parameter "fullTextMatch" ;
+         rr:constant "{@@full-text-match@@}" ;
+      ] ;    
+   ] ;
+   
+   dr:pivot [ 
+      rr:column "InKnowledgeLookupTransformation~~" ;
+   ] ;   
+   
    rr:subjectMap [ 
       dr:definedColumns ( [
          dr:name "UUID" ;
-         dr:function op:uuid ; 
+         dr:function drop:uuid ; 
       ] );
       rr:template  "{@collection}{UUID}" ;
       rr:class oa:Annotation ;
       rr:class model:TermAnnotation ;
       dr:condition [
-         rr:column "$.term";
-         dr:transformationReference <#InThesaurusTransformation> ;
-         op:neq "";
+         rr:column "InKnowledgeLookupTransformation~~$.term";
+         drop:neq "";
       ];
    ] ;
    rr:predicateObjectMap [ 
@@ -166,7 +517,7 @@
       rr:objectMap [
          dr:definedColumns ( [
             dr:name "TIME" ;
-            dr:function op:currentTime; 
+            dr:function drop:currentTime; 
          ] );          
          rr:column "TIME";
          rr:datatype xsd:dateTime ;
@@ -201,19 +552,17 @@
 			  ] ;
 		   ] ;
 		   rr:predicateObjectMap [
-		      rr:predicate <http://sw.islab.ntua.gr/annotation/start> ;
+		      rr:predicate oa:start ;
 			  rr:objectMap [
-                 rr:column "$.start";
-                 dr:transformationReference <#InThesaurusTransformation> ;
-				 rr:datatype xsd:integer;
+                 rr:column "InKnowledgeLookupTransformation~~$.start";
+				 rr:datatype xsd:nonNegativeInteger;
 			  ] ;
 		   ] ;
 		   rr:predicateObjectMap [
-		      rr:predicate <http://sw.islab.ntua.gr/annotation/end> ;
+		      rr:predicate oa:end ;
 			  rr:objectMap [
-                 rr:column "$.end";
-                 dr:transformationReference <#InThesaurusTransformation> ;
-				 rr:datatype xsd:integer;
+                 rr:column "InKnowledgeLookupTransformation~~$.end";
+				 rr:datatype xsd:nonNegativeInteger;
 			  ] ;
 		   ] ;
 		];
@@ -222,16 +571,15 @@
    rr:predicateObjectMap [ 
       rr:predicate  <http://sw.islab.ntua.gr/annotation/score> ;
 	  rr:objectMap [
-         rr:column "$.score";
-         dr:transformationReference <#InThesaurusTransformation> ;
+         rr:column "InKnowledgeLookupTransformation~~$.score";
          rr:datatype xsd:double;
       ] ;
    ] ;     
    rr:predicateObjectMap [ 
       rr:predicate  oa:hasBody ;
 	  rr:objectMap [
-         rr:column "$.term";
-         dr:transformationReference <#InThesaurusTransformation> ;
+         rr:column "InKnowledgeLookupTransformation~~$.term";
+         rr:termType rr:IRI ;
       ] ;
    ] .
 

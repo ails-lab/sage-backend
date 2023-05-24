@@ -32,45 +32,38 @@ import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
 import org.springframework.util.FileCopyUtils;
 
-import ac.software.semantic.controller.ExecuteMonitor;
-import ac.software.semantic.controller.SSEController;
-import ac.software.semantic.model.AnnotatorDocument;
-import ac.software.semantic.model.DataServiceParameterValue;
+import ac.software.semantic.config.ConfigurationContainer;
+import ac.software.semantic.controller.WebSocketService;
 import ac.software.semantic.model.Dataset;
-import ac.software.semantic.model.DatasetState;
 import ac.software.semantic.model.ElasticConfiguration;
 import ac.software.semantic.model.ExecuteNotificationObject;
-import ac.software.semantic.model.ExecuteState;
 import ac.software.semantic.model.ExecutionInfo;
 import ac.software.semantic.model.FileSystemConfiguration;
-import ac.software.semantic.model.IndexState;
-import ac.software.semantic.model.IndexingState;
-import ac.software.semantic.model.MappingState;
-import ac.software.semantic.model.NotificationObject;
-import ac.software.semantic.model.PreprocessInstruction;
-import ac.software.semantic.model.PublishState;
-import ac.software.semantic.model.VirtuosoConfiguration;
+import ac.software.semantic.model.TripleStoreConfiguration;
 import ac.software.semantic.model.VocabularizerDocument;
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.constants.NotificationChannel;
+import ac.software.semantic.model.constants.NotificationType;
+import ac.software.semantic.model.state.MappingExecuteState;
+import ac.software.semantic.model.state.MappingState;
+import ac.software.semantic.model.state.PublishState;
+import ac.software.semantic.payload.NotificationObject;
 import ac.software.semantic.payload.VocabularizerResponse;
 import ac.software.semantic.repository.DatasetRepository;
 import ac.software.semantic.repository.VocabularizerRepository;
 import ac.software.semantic.security.UserPrincipal;
 import edu.ntua.isci.ac.common.db.rdf.RDFJenaConnection;
-import edu.ntua.isci.ac.common.db.rdf.RDFJenaSource;
-import edu.ntua.isci.ac.common.db.rdf.RDFSource;
 import edu.ntua.isci.ac.d2rml.model.D2RMLModel;
-import edu.ntua.isci.ac.d2rml.monitor.FileSystemOutputHandler;
-import edu.ntua.isci.ac.d2rml.monitor.StringOutputHandler;
+import edu.ntua.isci.ac.d2rml.output.FileSystemRDFOutputHandler;
+import edu.ntua.isci.ac.d2rml.output.StringRDFOutputHandler;
 import edu.ntua.isci.ac.d2rml.processor.Executor;
 import edu.ntua.isci.ac.lod.vocabularies.RDFVocabulary;
 import edu.ntua.isci.ac.lod.vocabularies.SKOSVocabulary;
-import edu.ntua.isci.ac.lod.vocabularies.sema.SEMAVocabulary;
-import edu.ntua.isci.ac.semaspace.index.Indexer;
+import ac.software.semantic.vocs.SEMRVocabulary;
 
 @Service
 public class VocabularizerService {
@@ -91,15 +84,17 @@ public class VocabularizerService {
 	DatasetRepository datasetRepository;
 
 	@Autowired
-	VirtuosoJDBC virtuosoJDBC;
+	TripleStore tripleStore;
 
 	@Autowired
-	@Qualifier("virtuoso-configuration")
-	private Map<String,VirtuosoConfiguration> virtuosoConfigurations;
+	private SEMRVocabulary resourceVocabulary;
+	@Autowired
+	@Qualifier("triplestore-configurations")
+	private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
 
 	@Autowired
-	@Qualifier("elastic-configuration")
-	private ElasticConfiguration elasticConfiguration;
+	@Qualifier("elastic-configurations")
+	private ConfigurationContainer<ElasticConfiguration> elasticConfigurations;
 
 	@Autowired
 	@Qualifier("filesystem-configuration")
@@ -120,7 +115,7 @@ public class VocabularizerService {
 				new ObjectId(currentUser.getId()));
 		if (doc.isPresent()) {
 			VocabularizerDocument ad = doc.get();
-			return Optional.of(modelMapper.vocabularizer2VocabularizerResponse(virtuosoConfigurations.values(), ad));
+			return Optional.of(modelMapper.vocabularizer2VocabularizerResponse(ad));
 		} else {
 			return Optional.empty();
 		}
@@ -129,7 +124,7 @@ public class VocabularizerService {
 	public VocabularizerDocument createVocabularizer(UserPrincipal currentUser, String datasetUri,
 			List<String> onProperty, String name, String separator) {
 
-		String datasetUuid = SEMAVocabulary.getId(datasetUri);
+		String datasetUuid = resourceVocabulary.getUuidFromResourceUri(datasetUri);
 
 		Optional<Dataset> ds = datasetRepository.findByUuid(datasetUuid);
 		if (ds.isPresent()) {
@@ -195,8 +190,7 @@ public class VocabularizerService {
 
 	}
 
-	public boolean executeVocabularizer(UserPrincipal currentUser, String id,
-			ApplicationEventPublisher applicationEventPublisher) throws Exception {
+	public boolean executeVocabularizer(UserPrincipal currentUser, String id, WebSocketService wsService) throws Exception {
 //		
 		Optional<VocabularizerDocument> res = vocabularizerRepository.findByIdAndUserId(new ObjectId(id),
 				new ObjectId(currentUser.getId()));
@@ -214,11 +208,11 @@ public class VocabularizerService {
 		}
 
 		Dataset ds = dres.get();
-	    VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+	    TripleStoreConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
 
 		Date executeStart = new Date(System.currentTimeMillis());
 
-		ExecuteState es = adoc.getExecuteState(fileSystemConfiguration.getId());
+		MappingExecuteState es = adoc.getExecuteState(fileSystemConfiguration.getId());
 
 		es.setExecuteState(MappingState.EXECUTING);
 		es.setExecuteStartedAt(executeStart);
@@ -237,12 +231,12 @@ public class VocabularizerService {
 			spath += "<" + onProperty.get(i) + ">";
 		}
 
-		String sparql = "SELECT DISTINCT ?value " + "WHERE { " + "  GRAPH <" + SEMAVocabulary.getDataset(ds.getUuid())
+		String sparql = "SELECT DISTINCT ?value " + "WHERE { " + "  GRAPH <" + resourceVocabulary.getDatasetAsResource(ds.getUuid())
 				+ "> { " + "    ?s " + spath + " ?value } } ";
 
 		Set<String> values = new HashSet<>();
 
-		try (FileSystemOutputHandler outhandler = new FileSystemOutputHandler(
+		try (FileSystemRDFOutputHandler outhandler = new FileSystemRDFOutputHandler(
 				fileSystemConfiguration.getUserDataFolder(currentUser) + vocabularizersFolder, adoc.getUuid(),
 				shardSize)) {
 
@@ -265,10 +259,10 @@ public class VocabularizerService {
 							if (v.length() > 0) {
 
 								if (values.add(v)) {
-									Resource subj = SEMAVocabulary
-											.getTerm(adoc.getUuid() + "#" + UUID.randomUUID().toString());
+									Resource subj = resourceVocabulary
+											.getTermAsResource(adoc.getUuid() + "#" + UUID.randomUUID().toString());
 
-									try (StringOutputHandler conn = new StringOutputHandler()) {
+									try (StringRDFOutputHandler conn = new StringRDFOutputHandler()) {
 
 										((RDFJenaConnection) conn.getConnection()).add(subj, RDFVocabulary.type,
 												SKOSVocabulary.Concept);
@@ -288,9 +282,9 @@ public class VocabularizerService {
 
 						RDFNode v = sol.get("value");
 
-						Resource subj = SEMAVocabulary.getTerm(adoc.getUuid() + "#" + UUID.randomUUID().toString());
+						Resource subj = resourceVocabulary.getTermAsResource(adoc.getUuid() + "#" + UUID.randomUUID().toString());
 
-						try (StringOutputHandler conn = new StringOutputHandler()) {
+						try (StringRDFOutputHandler conn = new StringRDFOutputHandler()) {
 
 							((RDFJenaConnection) conn.getConnection()).add(subj, RDFVocabulary.type,
 									SKOSVocabulary.Concept);
@@ -309,8 +303,8 @@ public class VocabularizerService {
 
 			es.setExecuteState(MappingState.EXECUTION_FAILED);
 
-			SSEController.send("vocabularizer", applicationEventPublisher, this,
-					new NotificationObject("execute", MappingState.EXECUTION_FAILED.toString(), id, null, null, null));
+			wsService.send(NotificationChannel.vocabularizer, currentUser,
+					new NotificationObject(NotificationType.execute, MappingState.EXECUTION_FAILED.toString(), id, null, null, null));
 
 			vocabularizerRepository.save(adoc);
 
@@ -320,30 +314,33 @@ public class VocabularizerService {
 		String str = applyPreprocessToVocabularizerDocument(vocabularizerD2RML, adoc.getOnProperty());
 
 		Map<String, Object> params = new HashMap<>();
-		params.put("id", SEMAVocabulary.getDataset(adoc.getUuid()).toString());
-		params.put("identifier", SEMAVocabulary.getDataset(adoc.getUuid()).toString());
+		params.put("id", resourceVocabulary.getDatasetAsResource(adoc.getUuid()).toString());
+		params.put("identifier", resourceVocabulary.getDatasetAsResource(adoc.getUuid()).toString());
 		params.put("name", adoc.getName());
-		params.put("source", SEMAVocabulary.getDataset(adoc.getDatasetUuid()).toString());
-		params.put("prefix", SEMAVocabulary.getTerm(adoc.getUuid()) + "#");
+		params.put("source", resourceVocabulary.getDatasetAsResource(adoc.getDatasetUuid()).toString());
+		params.put("prefix", resourceVocabulary.getTermAsResource(adoc.getUuid()) + "#");
 		if (adoc.getSeparator() != null && adoc.getSeparator().length() > 0) {
 			params.put("separator", adoc.getSeparator());
 		} else {
 			params.put("separator", "");
 		}
 
-		try (FileSystemOutputHandler outhandler = new FileSystemOutputHandler(
+		try (FileSystemRDFOutputHandler outhandler = new FileSystemRDFOutputHandler(
 				fileSystemConfiguration.getUserDataFolder(currentUser) + vocabularizersFolder,
 				adoc.getUuid() + "_catalog", shardSize)) {
 
 			Executor exec = new Executor(outhandler, safeExecute);
 
-			try (ExecuteMonitor em = new ExecuteMonitor("vocabularizer", id, null, applicationEventPublisher)) {
+			try (ExecuteMonitor em = new ExecuteMonitor(NotificationChannel.vocabularizer, id, currentUser, wsService, executeStart)) {
 				exec.setMonitor(em);
 
 				D2RMLModel rmlMapping = D2RMLModel.readFromString(str);
 
-				SSEController.send("vocabularizer", applicationEventPublisher, this, new ExecuteNotificationObject(id,
-						null, ExecutionInfo.createStructure(rmlMapping), executeStart));
+//				SSEController.send("vocabularizer", applicationEventPublisher, this, new ExecuteNotificationObject(id, ExecutionInfo.createStructure(rmlMapping), executeStart));
+				ExecuteNotificationObject eno = new ExecuteNotificationObject(MappingState.EXECUTING, id);
+				eno.setD2rmlExecution(ExecutionInfo.createStructure(rmlMapping));
+				eno.setStartedAt(executeStart);
+				wsService.send(NotificationChannel.vocabularizer, currentUser, eno);
 
 				exec.execute(rmlMapping, params);
 
@@ -356,8 +353,7 @@ public class VocabularizerService {
 
 				vocabularizerRepository.save(adoc);
 
-				SSEController.send("vocabularizer", applicationEventPublisher, this,
-						new NotificationObject("execute", MappingState.EXECUTED.toString(), id, null, executeStart,
+				wsService.send(NotificationChannel.vocabularizer, currentUser, new NotificationObject(NotificationType.execute, MappingState.EXECUTED.toString(), id, null, executeStart,
 								executeFinish, outhandler.getTotalItems()));
 
 				System.out.println("ANNOTATOR EXECUTED: " + outhandler.getShards());
@@ -379,7 +375,7 @@ public class VocabularizerService {
 
 			} catch (Exception ex) {
 				ex.printStackTrace();
-				exec.getMonitor().currentConfigurationFailed();
+				exec.getMonitor().currentConfigurationFailed(ex);
 
 				throw ex;
 			}
@@ -389,8 +385,7 @@ public class VocabularizerService {
 
 			es.setExecuteState(MappingState.EXECUTION_FAILED);
 
-			SSEController.send("vocabularizer", applicationEventPublisher, this,
-					new NotificationObject("execute", MappingState.EXECUTION_FAILED.toString(), id, null, null, null));
+			wsService.send(NotificationChannel.vocabularizer, currentUser, new NotificationObject(NotificationType.execute, MappingState.EXECUTION_FAILED.toString(), id, null, null, null));
 
 			vocabularizerRepository.save(adoc);
 
@@ -402,12 +397,12 @@ public class VocabularizerService {
 	public List<VocabularizerResponse> getVocabularizers(UserPrincipal currentUser, String datasetUri) {
 		List<VocabularizerDocument> docs = new ArrayList<>();
 
-		String datasetUuid = SEMAVocabulary.getId(datasetUri);
+		String datasetUuid = resourceVocabulary.getUuidFromResourceUri(datasetUri);
 
 		docs = vocabularizerRepository.findByDatasetUuidAndUserId(datasetUuid, new ObjectId(currentUser.getId()));
 
 		List<VocabularizerResponse> response = docs.stream()
-				.map(doc -> modelMapper.vocabularizer2VocabularizerResponse(virtuosoConfigurations.values(), doc)).collect(Collectors.toList());
+				.map(doc -> modelMapper.vocabularizer2VocabularizerResponse(doc)).collect(Collectors.toList());
 
 		return response;
 	}
@@ -420,7 +415,7 @@ public class VocabularizerService {
 			VocabularizerDocument adoc = doc.get();
 			
 		    Dataset ds = datasetRepository.findByUuid(adoc.getDatasetUuid()).get();
-		    VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+		    TripleStoreConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
 
 			PublishState state = adoc.getPublishState(vc.getId());
 			state.setPublishState(DatasetState.PUBLISHING);
@@ -428,8 +423,8 @@ public class VocabularizerService {
 
 			vocabularizerRepository.save(adoc);
 
-			virtuosoJDBC.publish(currentUser, vc.getName(), adoc);
-			virtuosoJDBC.addDatasetToAccessGraph(currentUser, vc.getName(), adoc.getUuid(), false);
+			tripleStore.publish(currentUser, vc.getName(), adoc);
+			tripleStore.addDatasetToAccessGraph(currentUser, vc, adoc.getUuid(), false);
 
 			state.setPublishCompletedAt(new Date(System.currentTimeMillis()));
 			state.setPublishState(DatasetState.PUBLISHED);
@@ -449,15 +444,15 @@ public class VocabularizerService {
 		if (doc.isPresent()) {
 			VocabularizerDocument adoc = doc.get();
 		    Dataset ds = datasetRepository.findByUuid(adoc.getDatasetUuid()).get();
-		    VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+		    TripleStoreConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
 
 			PublishState state = adoc.getPublishState(vc.getId());
 			state.setPublishState(DatasetState.UNPUBLISHING);
 			state.setPublishStartedAt(new Date(System.currentTimeMillis()));
 			vocabularizerRepository.save(adoc);
 
-			virtuosoJDBC.unpublish(vc.getName(), adoc);
-			virtuosoJDBC.removeDatasetFromAccessGraph(vc.getName(), adoc.getUuid().toString());
+			tripleStore.unpublish(vc.getName(), adoc);
+			tripleStore.removeDatasetFromAccessGraph(vc, adoc.getUuid().toString());
 
 			state.setPublishState(DatasetState.UNPUBLISHED);
 			state.setPublishStartedAt(null);
@@ -471,70 +466,70 @@ public class VocabularizerService {
 		return true;
 	}
 
-	public boolean index(UserPrincipal currentUser, String datasetId) throws IOException {
-		Optional<VocabularizerDocument> doc = vocabularizerRepository.findByIdAndUserId(new ObjectId(datasetId),
-				new ObjectId(currentUser.getId()));
-
-		if (doc.isPresent()) {
-			VocabularizerDocument vocabulary = doc.get();
-		    Dataset ds = datasetRepository.findByUuid(vocabulary.getDatasetUuid()).get();
-		    VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
-
-			IndexState is = vocabulary.getIndexState(elasticConfiguration.getId());
-
-			is.setIndexState(IndexingState.INDEXING);
-			is.setIndexStartedAt(new Date(System.currentTimeMillis()));
-			vocabularizerRepository.save(vocabulary);
-
-			Indexer ic = new Indexer(vc.getSparqlEndpoint());
-			ic.indexVocabulary(elasticConfiguration.getIndexIp(), elasticConfiguration.getIndexVocabularyName(),
-					SEMAVocabulary.getDataset(vocabulary.getUuid()).toString(), legacyUris);
-
-			System.out.println("INDEXING COMPLETED");
-
-			is.setIndexState(IndexingState.INDEXED);
-			is.setIndexCompletedAt(new Date(System.currentTimeMillis()));
-			vocabularizerRepository.save(vocabulary);
-
-			return true;
-		}
-
-		return false;
-
-	}
-
-	public boolean unindex(UserPrincipal currentUser, String datasetId) throws IOException {
-		Optional<VocabularizerDocument> doc = vocabularizerRepository.findByIdAndUserId(new ObjectId(datasetId),
-				new ObjectId(currentUser.getId()));
-
-		if (doc.isPresent()) {
-			VocabularizerDocument vocabulary = doc.get();
-		    Dataset ds = datasetRepository.findByUuid(vocabulary.getDatasetUuid()).get();
-		    VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
-
-			IndexState is = vocabulary.getIndexState(elasticConfiguration.getId());
-
-			is.setIndexState(IndexingState.UNINDEXING);
-			is.setIndexStartedAt(new Date(System.currentTimeMillis()));
-			vocabularizerRepository.save(vocabulary);
-
-			Indexer ic = new Indexer(vc.getSparqlEndpoint());
-			ic.unindexVocabulary(elasticConfiguration.getIndexIp(), elasticConfiguration.getIndexVocabularyName(),
-					SEMAVocabulary.getDataset(vocabulary.getUuid()).toString(), legacyUris);
-
-			System.out.println("UNINDEXING COMPLETED");
-
-			is.setIndexState(IndexingState.NOT_INDEXED);
-			is.setIndexCompletedAt(new Date(System.currentTimeMillis()));
-			vocabularizerRepository.save(vocabulary);
-
-			return true;
-
-		}
-
-		return false;
-
-	}
+//	public boolean index(UserPrincipal currentUser, String datasetId) throws IOException {
+//		Optional<VocabularizerDocument> doc = vocabularizerRepository.findByIdAndUserId(new ObjectId(datasetId),
+//				new ObjectId(currentUser.getId()));
+//
+//		if (doc.isPresent()) {
+//			VocabularizerDocument vocabulary = doc.get();
+//		    Dataset ds = datasetRepository.findByUuid(vocabulary.getDatasetUuid()).get();
+//		    VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+//
+//			IndexState is = vocabulary.getIndexState(elasticConfiguration.getId());
+//
+//			is.setIndexState(IndexingState.INDEXING);
+//			is.setIndexStartedAt(new Date(System.currentTimeMillis()));
+//			vocabularizerRepository.save(vocabulary);
+//
+//			Indexer ic = new Indexer(vc.getSparqlEndpoint());
+//			ic.indexVocabulary(elasticConfiguration.getIndexIp(), elasticConfiguration.getIndexVocabularyName(),
+//					SEMAVocabulary.getDataset(vocabulary.getUuid()).toString(), legacyUris);
+//
+//			System.out.println("INDEXING COMPLETED");
+//
+//			is.setIndexState(IndexingState.INDEXED);
+//			is.setIndexCompletedAt(new Date(System.currentTimeMillis()));
+//			vocabularizerRepository.save(vocabulary);
+//
+//			return true;
+//		}
+//
+//		return false;
+//
+//	}
+//
+//	public boolean unindex(UserPrincipal currentUser, String datasetId) throws IOException {
+//		Optional<VocabularizerDocument> doc = vocabularizerRepository.findByIdAndUserId(new ObjectId(datasetId),
+//				new ObjectId(currentUser.getId()));
+//
+//		if (doc.isPresent()) {
+//			VocabularizerDocument vocabulary = doc.get();
+//		    Dataset ds = datasetRepository.findByUuid(vocabulary.getDatasetUuid()).get();
+//		    VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+//
+//			IndexState is = vocabulary.getIndexState(elasticConfiguration.getId());
+//
+//			is.setIndexState(IndexingState.UNINDEXING);
+//			is.setIndexStartedAt(new Date(System.currentTimeMillis()));
+//			vocabularizerRepository.save(vocabulary);
+//
+//			Indexer ic = new Indexer(vc.getSparqlEndpoint());
+//			ic.unindexVocabulary(elasticConfiguration.getIndexIp(), elasticConfiguration.getIndexVocabularyName(),
+//					SEMAVocabulary.getDataset(vocabulary.getUuid()).toString(), legacyUris);
+//
+//			System.out.println("UNINDEXING COMPLETED");
+//
+//			is.setIndexState(IndexingState.NOT_INDEXED);
+//			is.setIndexCompletedAt(new Date(System.currentTimeMillis()));
+//			vocabularizerRepository.save(vocabulary);
+//
+//			return true;
+//
+//		}
+//
+//		return false;
+//
+//	}
 
 	public boolean deleteVocabularizer(UserPrincipal currentUser, String id) {
 		Optional<VocabularizerDocument> doc = vocabularizerRepository.findByIdAndUserId(new ObjectId(id),

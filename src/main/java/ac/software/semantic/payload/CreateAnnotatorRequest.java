@@ -4,17 +4,20 @@ import java.util.List;
 
 
 import ac.software.semantic.model.DataServiceParameterValue;
+import ac.software.semantic.model.PathElement;
 import ac.software.semantic.model.PreprocessInstruction;
 
 public class CreateAnnotatorRequest {
 
 	private String datasetUri; 
-	private List<String> onProperty;
+	private List<PathElement> onPath;
 	private String asProperty;
 	private String annotator;
 	private String thesaurus;
 	
 	private String variant;
+	
+	private String defaultTarget;
 	
 	private List<DataServiceParameterValue> parameters;
 	private List<PreprocessInstruction> preprocess;
@@ -25,11 +28,11 @@ public class CreateAnnotatorRequest {
 	public void setDatasetUri(String datasetUri) {
 		this.datasetUri = datasetUri;
 	}
-	public List<String> getOnProperty() {
-		return onProperty;
+	public List<PathElement> getOnPath() {
+		return onPath;
 	}
-	public void setOnProperty(List<String> onProperty) {
-		this.onProperty = onProperty;
+	public void setOnPath(List<PathElement> onPath) {
+		this.onPath = onPath;
 	}
 	public String getAsProperty() {
 		return asProperty;
@@ -66,6 +69,12 @@ public class CreateAnnotatorRequest {
 	}
 	public void setVariant(String variant) {
 		this.variant = variant;
+	}
+	public String getDefaultTarget() {
+		return defaultTarget;
+	}
+	public void setDefaultTarget(String defaultTarget) {
+		this.defaultTarget = defaultTarget;
 	}
 
 }

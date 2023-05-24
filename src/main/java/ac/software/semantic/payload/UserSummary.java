@@ -1,14 +1,16 @@
 package ac.software.semantic.payload;
 
-import ac.software.semantic.model.UserType;
+import ac.software.semantic.model.constants.UserRoleType;
 
 public class UserSummary {
     private String id;
     private String username;
     
-    private UserType type;
+    private UserRoleType type;
+    
+//    private boolean validationAssigner;
 
-    public UserSummary(String id, String username, UserType type) {
+    public UserSummary(String id, String username, UserRoleType type) {
         this.id = id;
         this.username = username;
         this.type = type;
@@ -30,12 +32,20 @@ public class UserSummary {
         this.username = username;
     }
 
-	public UserType getType() {
+	public UserRoleType getType() {
 		return type;
 	}
 
-	public void setType(UserType type) {
+	public void setType(UserRoleType type) {
 		this.type = type;
 	}
+
+//	public boolean isValidationAssigner() {
+//		return validationAssigner;
+//	}
+//
+//	public void setValidationAssigner(boolean validationAssigner) {
+//		this.validationAssigner = validationAssigner;
+//	}
 
 }

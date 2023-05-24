@@ -12,8 +12,11 @@ public class UpdateAnnotatorRequest {
 
     private String variant;
 
+	private String defaultTarget;
+
     private List<DataServiceParameterValue> parameters;
     private List<PreprocessInstruction> preprocess;
+    
 
     public String getAsProperty() {
         return asProperty;
@@ -62,4 +65,12 @@ public class UpdateAnnotatorRequest {
     public void setPreprocess(List<PreprocessInstruction> preprocess) {
         this.preprocess = preprocess;
     }
+
+	public String getDefaultTarget() {
+		return defaultTarget;
+	}
+
+	public void setDefaultTarget(String defaultTarget) {
+		this.defaultTarget = defaultTarget;
+	}
 }

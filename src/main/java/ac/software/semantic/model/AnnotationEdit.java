@@ -8,7 +8,14 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.google.common.collect.HashMultiset;
+import com.google.common.collect.Multiset;
 
+import ac.software.semantic.model.constants.AnnotationEditType;
+import ac.software.semantic.payload.ValueAnnotationReference;
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @Document(collection = "AnnotationEdits")
 public class AnnotationEdit {
    @Id
@@ -28,12 +35,12 @@ public class AnnotationEdit {
    
    private String annotationValue;
    
+   // obsolete, kept because mongo contains legacy data
    private AnnotationEditType editType;
    
    private ObjectId annotationEditGroupId;
    
    private ObjectId pagedAnnotationValidationId;
-//   private ObjectId pagedAnnotationValidationPageId;
    
    private int start;
    private int end;
@@ -41,6 +48,37 @@ public class AnnotationEdit {
    private List<ObjectId> acceptedByUserId;
    private List<ObjectId> rejectedByUserId;
    private List<ObjectId> addedByUserId;
+   
+   private List<TargetAccept> targetAccept;
+   
+   private List<ValueAnnotationReference> references;
+   
+   public class TargetAccept {
+	   private ObjectId userId;
+	   private String property;
+	
+	   public TargetAccept(ObjectId userId, String property) {
+		   this.userId = userId;
+		   this.property = property;
+		   
+	   }
+		public ObjectId getUserId() {
+			return userId;
+		}
+		
+		public void setUserId(ObjectId userId) {
+			this.userId = userId;
+		}
+		
+		public String getProperty() {
+			return property;
+		}
+		
+		public void setProperty(String property) {
+			this.property = property;
+		}
+	
+   }
    
    public AnnotationEdit() { 
 	   acceptedByUserId = new ArrayList<>();
@@ -76,13 +114,13 @@ public class AnnotationEdit {
 		this.propertyValue = propertyValue;
 	}
 
-	public AnnotationEditType getEditType() {
-		return editType;
-	}
-
-	public void setEditType(AnnotationEditType editType) {
-		this.editType = editType;
-	}
+//	public AnnotationEditType getEditType() {
+//		return editType;
+//	}
+//
+//	public void setEditType(AnnotationEditType editType) {
+//		this.editType = editType;
+//	}
 
 	public String getAnnotationValue() {
 		return annotationValue;
@@ -178,6 +216,79 @@ public class AnnotationEdit {
 
 	public void setAddedByUserId(List<ObjectId> addedByUserId) {
 		this.addedByUserId = addedByUserId;
+	}
+
+	public List<TargetAccept> getTargetAccept() {
+		return targetAccept;
+	}
+
+	public void setTargetAccept(List<TargetAccept> targetAccept) {
+		this.targetAccept = targetAccept;
+	}
+		
+	public String getTargetAcceptPropertyForUserId(ObjectId userId) {
+		if (targetAccept != null) {
+			for (TargetAccept ta : targetAccept) {
+				if (ta.getUserId().equals(userId)) {
+					return ta.getProperty();
+				}
+			}
+		}
+		
+		return null;
+	}
+	
+	public void removeTargetAcceptPropertyForUserId(ObjectId userId) {
+		if (targetAccept != null) {
+			for (int i = 0; i < targetAccept.size(); i++) {
+				if (targetAccept.get(i).getUserId().equals(userId)) {
+					targetAccept.remove(i);
+					return;
+				}
+			}
+		}
+	}
+	
+	public void addTargetAcceptPropertyForUserId(ObjectId userId, String property) {
+		if (property == null) {
+			return;
+		}
+		
+		if (targetAccept == null) {
+			targetAccept = new ArrayList<>();
+		}
+		
+		targetAccept.add(new TargetAccept(userId, property));
+	}
+	
+	public String getMostAcceptedTargetAcceptProperty() {
+		if (targetAccept != null) {
+			Multiset<String> refSet = HashMultiset.create();
+			for (TargetAccept ta : targetAccept) {
+				refSet.add(ta.getProperty());
+			}
+			
+			int c = 0;
+			String prop = null;
+			for (Multiset.Entry<String> entry : refSet.entrySet()) {
+				if (entry.getCount() > c) {
+					c = entry.getCount();
+					prop = entry.getElement();
+				}
+			}
+			
+			return prop;
+		}
+		
+		return null;
+	}
+
+	public List<ValueAnnotationReference> getReferences() {
+		return references;
+	}
+
+	public void setReferences(List<ValueAnnotationReference> references) {
+		this.references = references;
 	}
 
 }

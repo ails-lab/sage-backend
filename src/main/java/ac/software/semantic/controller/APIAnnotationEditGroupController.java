@@ -1,13 +1,12 @@
 package ac.software.semantic.controller;
 
-import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -16,25 +15,17 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.util.StdDateFormat;
 
 import ac.software.semantic.model.AnnotationEditGroup;
-import ac.software.semantic.model.DatasetState;
 import ac.software.semantic.model.FileSystemConfiguration;
-import ac.software.semantic.model.NotificationObject;
-import ac.software.semantic.model.PublishState;
-import ac.software.semantic.model.VirtuosoConfiguration;
+import ac.software.semantic.model.constants.SerializationType;
 import ac.software.semantic.payload.AnnotationEditGroupResponse;
 import ac.software.semantic.payload.ValueAnnotation;
+import ac.software.semantic.payload.ValueResponseContainer;
 import ac.software.semantic.repository.AnnotationEditGroupRepository;
 import ac.software.semantic.security.CurrentUser;
 import ac.software.semantic.security.UserPrincipal;
@@ -50,18 +41,11 @@ public class APIAnnotationEditGroupController {
     @Qualifier("filesystem-configuration")
     private FileSystemConfiguration fileSystemConfiguration;
 
-//    @Autowired
-//    @Qualifier("virtuoso-configuration")
-//    private VirtuosoConfiguration virtuosoConfiguration;
-
 	@Autowired
 	private AnnotationEditGroupService aegService;
 
 	@Autowired
 	private AnnotationEditGroupRepository aegRepository;
-//
-//    @Autowired
-//    private ApplicationEventPublisher applicationEventPublisher;
 
 	public enum AnnotationValidationRequest {
 		ALL,
@@ -71,7 +55,7 @@ public class APIAnnotationEditGroupController {
 
 
 
-	@GetMapping(value = "/getAllByUser")
+	@GetMapping(value = "/get-all-by-user")
 	public ResponseEntity<?> getAllByUser(@CurrentUser UserPrincipal currentUser, @RequestParam("datasetUri") String datasetUri)  {
 
 		List<AnnotationEditGroupResponse> docs = aegService.getAnnotationEditGroups(currentUser, datasetUri);
@@ -79,7 +63,7 @@ public class APIAnnotationEditGroupController {
 		return ResponseEntity.ok(docs);
 	}
 
-	@GetMapping(value = "/getAll")
+	@GetMapping(value = "/get-all")
 	public ResponseEntity<?> getAll(@CurrentUser UserPrincipal currentUser, @RequestParam("datasetUri") String datasetUri)  {
 
 		List<AnnotationEditGroupResponse> docs = aegService.getAnnotationEditGroups(datasetUri);
@@ -90,123 +74,53 @@ public class APIAnnotationEditGroupController {
     @GetMapping(value = "/view/{id}", produces = "application/json")
     public ResponseEntity<?> view(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam(value="page", defaultValue="1") int page, @RequestParam(value="mode", defaultValue="ALL") AnnotationValidationRequest mode, @RequestParam String annotators)  {
 
-    	Collection<ValueAnnotation> res = aegService.view(currentUser, id, mode, page, annotators);
+    	ValueResponseContainer<ValueAnnotation> res = aegService.view(currentUser, id, mode, page, annotators);
 		
 		return ResponseEntity.ok(res);
+    }
+    
+    @PostMapping(value = "/update/{id}")
+    public ResponseEntity<?> view(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, boolean autoexportable)  {
+
+    	Optional<AnnotationEditGroup> aegOpt = aegRepository.findById(new ObjectId(id));
+    	if (aegOpt.isPresent()) {
+    		AnnotationEditGroup aeg = aegOpt.get();
+    		aeg.setAutoexportable(autoexportable);
+    		aegRepository.save(aeg);
+    	} else {
+    		return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+    	}
+		
+		return ResponseEntity.ok().build();
     } 
 
-//	@PostMapping(value = "/execute/{id}")
-//	public ResponseEntity<?> execute(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-//		try {
-//			AsyncUtils.supplyAsync(() -> aegService.execute(currentUser, id, applicationEventPublisher));
-//			
-//			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-//		} catch (Exception e) {
-//			e.printStackTrace();
-//			
-//			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-//		}
-//		
-//	}
-//	
-//	  @PostMapping(value = "/publish/{id}")
-//		public ResponseEntity<?> publish(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-//			
-//			try {
-//				
-//				AsyncUtils.supplyAsync(() -> aegService.publish(currentUser, id))
-//				   .exceptionally(ex -> { ex.printStackTrace(); return false; })
-//				   .thenAccept(ok -> {
-//					   AnnotationEditGroup doc = aegRepository.findById(new ObjectId(id)).get();
-//					   PublishState ps = doc.getPublishState(virtuosoConfiguration.getDatabaseId());
-//					   
-//					   ObjectMapper mapper = new ObjectMapper();
-//					   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-//					   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-//					    
-//					   NotificationObject no = new NotificationObject("publish", DatasetState.PUBLISHED_PUBLIC.toString(), id, null, ps.getPublishStartedAt(), ps.getPublishCompletedAt());
-//								
-//						try {
-//							SseEventBuilder sse = SseEmitter.event().name("edits").data(mapper.writeValueAsBytes(no));
-//						
-//							applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-//						} catch (JsonProcessingException e) {
-//							// TODO Auto-generated catch block
-//							e.printStackTrace();
-//						}
-//				   });
-//				
-////				System.out.println("PUBLISHING ACCEPTED");
-//				return new ResponseEntity<>(HttpStatus.ACCEPTED);
-//			} catch (Exception e) {
-//				e.printStackTrace();
-//				return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-//			}
-//		}
-//	  
-//		@PostMapping(value = "/unpublish/{id}")
-//		public ResponseEntity<?> unpublish(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-//			
-//			try {		
-//				AsyncUtils.supplyAsync(() -> aegService.unpublish(currentUser, id))
-//				   .exceptionally(ex -> { ex.printStackTrace(); return false; })
-//				   .thenAccept(ok -> {
-//					   AnnotationEditGroup doc = aegRepository.findById(new ObjectId(id)).get();
-//		
-//					   ObjectMapper mapper = new ObjectMapper();
-//					   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-//					   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-//						    
-//					   NotificationObject no = new NotificationObject("publish", DatasetState.UNPUBLISHED.toString(), id, null, null, null);
-//									
-//						try {
-//							SseEventBuilder sse = SseEmitter.event().name("edits").data(mapper.writeValueAsBytes(no));
-//						
-//							applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-//						} catch (JsonProcessingException e) {
-//							// TODO Auto-generated catch block
-//							e.printStackTrace();
-//						}
-//				   });
-//				
-////				System.out.println("PUBLISHING ACCEPTED");
-//				return new ResponseEntity<>(HttpStatus.ACCEPTED);
-//			} catch (Exception e) {
-//				e.printStackTrace();
-//				
-//				return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-//			}
-//		} 		
-//	
-//    @GetMapping(value = "/lastExecution/{id}",
-//            produces = "text/plain")
-//	public ResponseEntity<?> lastExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-//	
-//		try {
-//			Optional<String> ttl = aegService.getLastExecution(currentUser, id);
-//			if (ttl.isPresent()) {
-//				return ResponseEntity.ok(ttl.get());
-//			} else {
-//				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-//			}
-//		} catch (Exception e) {
-//			e.printStackTrace();
-//			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-//		}
-//    }
     
-	@GetMapping(value = "/downloadValues/{id}")
-	public ResponseEntity<?> downloadAnnotationValues(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam(name = "mode", defaultValue = "ALL") String mode) {
+	@GetMapping(value = "/export-annotations-validations/{id}")
+	public ResponseEntity<?> downloadAnnotationValues(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, 
+			@RequestParam(required = false, defaultValue = "JSON-LD") String serialization, 
+			@RequestParam(required = false, defaultValue = "false") boolean onlyReviewed, 
+			@RequestParam(required = false, defaultValue = "true") boolean onlyNonRejected,
+			@RequestParam(required = false, defaultValue = "true") boolean onlyFresh,
+			@RequestParam(required = false, defaultValue = "true") boolean created,
+			@RequestParam(required = false, defaultValue = "true") boolean creator,
+			@RequestParam(required = false, defaultValue = "true") boolean score,
+			@RequestParam(required = false, defaultValue = "true") boolean scope, 
+			@RequestParam(required = false, defaultValue = "true") boolean selector, 
+//			@RequestParam(required = false) String defaultScope,
+			@RequestParam(required = false, defaultValue = "TGZ") String archive
+			) {
 
 		try {
-			ByteArrayResource resource = aegService.downloadAnnotationValues(currentUser, id, mode);
+//			ByteArrayResource resource = aegService.exportAnnotations(currentUser, id, SerializationType.get(serialization), onlyReviewed, onlyNonRejected, created, creator, score, scope, selector, defaultScope, archive) ;
+			ByteArrayResource resource = aegService.exportAnnotations(currentUser, id, SerializationType.get(serialization), onlyReviewed, onlyNonRejected, onlyFresh, created, creator, score, scope, selector, archive) ;
+			
 			if (resource != null) {
 	
 				AnnotationEditGroup aeg = aegRepository.findById(new ObjectId(id)).get();
 				
 				HttpHeaders headers = new HttpHeaders();
 				headers.add(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, HttpHeaders.CONTENT_DISPOSITION);
-				headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + aeg.getUuid() + ".zip");
+				headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + aeg.getUuid() + "." + archive.toLowerCase());
 	
 				return ResponseEntity.ok().headers(headers)
 	//	            .contentLength(ffile.length())
@@ -221,5 +135,18 @@ public class APIAnnotationEditGroupController {
 		}
 	
 	}
+	
+//	@GetMapping(value = "/score-validation-distibution/{id}")
+//	public ResponseEntity<?> validationDistribution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam(defaultValue = "10") int accuracy) {
+//
+//		try {
+//			List<Map<String, Object>> resource = aegService.computeValidationDistribution(currentUser, id, accuracy);
+//			return ResponseEntity.ok(resource);
+//		} catch (Exception e) {
+//			e.printStackTrace();
+//			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+//		}
+//	
+//	}
     
 }

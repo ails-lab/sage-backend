@@ -1,14 +1,9 @@
-
 package ac.software.semantic.service;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.StringReader;
-import java.io.StringWriter;
-import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Date;
@@ -22,62 +17,71 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import org.apache.jena.query.DatasetFactory;
-import org.apache.jena.query.QueryExecution;
-import org.apache.jena.query.QueryExecutionFactory;
-import org.apache.jena.query.ResultSet;
-import org.apache.jena.rdf.model.Model;
-import org.apache.jena.rdf.model.ModelFactory;
-import org.apache.jena.rdf.model.ResourceFactory;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
-import org.apache.jena.riot.RDFFormat;
 import org.bson.types.ObjectId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.scheduling.annotation.AsyncResult;
 import org.springframework.stereotype.Service;
+import org.springframework.util.concurrent.ListenableFuture;
 
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.databind.JsonMappingException;
-
-import ac.software.semantic.controller.AsyncUtils;
-import ac.software.semantic.controller.ExecuteMonitor;
-import ac.software.semantic.controller.SSEController;
+import ac.software.semantic.config.ConfigurationContainer;
+import ac.software.semantic.controller.WebSocketService;
+import ac.software.semantic.controller.utils.FileUtils;
+import ac.software.semantic.model.Database;
 import ac.software.semantic.model.Dataset;
-import ac.software.semantic.model.DatasetState;
 import ac.software.semantic.model.DependencyBinding;
+import ac.software.semantic.model.ExecuteDocument;
 import ac.software.semantic.model.ExecuteNotificationObject;
-import ac.software.semantic.model.ExecuteState;
-import ac.software.semantic.model.ExecutionInfo;
 import ac.software.semantic.model.FileSystemConfiguration;
 import ac.software.semantic.model.MappingDocument;
+import ac.software.semantic.model.MappingExecutePublishDocument;
 import ac.software.semantic.model.MappingInstance;
-import ac.software.semantic.model.MappingState;
-import ac.software.semantic.model.MappingType;
-import ac.software.semantic.model.NotificationObject;
+import ac.software.semantic.model.NotificationMessage;
 import ac.software.semantic.model.ParameterBinding;
-import ac.software.semantic.model.PublishState;
-import ac.software.semantic.model.VirtuosoConfiguration;
+import ac.software.semantic.model.ProcessStateContainer;
+import ac.software.semantic.model.TaskDescription;
+import ac.software.semantic.model.Template;
+import ac.software.semantic.model.TripleStoreConfiguration;
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.constants.MappingType;
+import ac.software.semantic.model.constants.MessageType;
+import ac.software.semantic.model.constants.TaskType;
+import ac.software.semantic.model.state.ExecuteState;
+import ac.software.semantic.model.state.MappingExecuteState;
+import ac.software.semantic.model.state.MappingPublishState;
+import ac.software.semantic.model.state.MappingState;
+import ac.software.semantic.model.state.PublishState;
 import ac.software.semantic.payload.MappingResponse;
 import ac.software.semantic.repository.MappingRepository;
+import ac.software.semantic.repository.TemplateRepository;
 import ac.software.semantic.repository.DatasetRepository;
 import ac.software.semantic.security.UserPrincipal;
+import ac.software.semantic.service.DatasetService.DatasetContainer;
+import ac.software.semantic.vocs.SEMRVocabulary;
 import ac.software.util.SerializationTransformation;
-import edu.ntua.isci.ac.common.utils.IOUtils;
 import edu.ntua.isci.ac.d2rml.model.D2RMLModel;
-import edu.ntua.isci.ac.d2rml.monitor.FileSystemOutputHandler;
-import edu.ntua.isci.ac.d2rml.parser.Parser;
+import edu.ntua.isci.ac.d2rml.output.FileSystemRDFOutputHandler;
+import edu.ntua.isci.ac.d2rml.output.FileSystemPlainTextOutputHandler;
 import edu.ntua.isci.ac.d2rml.processor.Executor;
-import edu.ntua.isci.ac.lod.vocabularies.sema.SEMAVocabulary;
 
 @Service
-public class MappingsService {
+public class MappingsService implements ExecutingService {
 
-	Logger logger = LoggerFactory.getLogger(MappingsService.class);
+	private Logger logger = LoggerFactory.getLogger(MappingsService.class);
 
+    @Autowired
+    @Qualifier("database")
+    private Database database;
+    
+	@Autowired
+	private D2RMLService d2rmlService;
+	
 	@Autowired
 	private ModelMapper modelMapper;
 
@@ -85,129 +89,487 @@ public class MappingsService {
 	private MappingRepository mappingsRepository;
 
 	@Autowired
-	DatasetRepository datasetRepository;
+	private TemplateRepository templateRepository;
 
-//	@Autowired
-//	private ExecutionsRepository executionsRepository;
+	@Autowired
+	private TemplateService templateService;
 
-	@Value("${mapping.execution.folder}")
-	private String mappingsFolder;
-
-	@Value("${mapping.uploaded-files.folder}")
-	private String uploadsFolder;
-
-	@Value("${mapping.temp.folder}")
-	private String tempFolder;
+	@Autowired
+	private DatasetRepository datasetRepository;
 
 	@Value("${d2rml.execute.safe}")
 	private boolean safeExecute;
 
 	@Value("${d2rml.execute.shard-size}")
 	private int shardSize;
-	
+
+	@Value("${d2rml.execute.request-cache-size}")
+	private int restCacheSize;
+
 	@Value("${d2rml.extract.min-size:0}")
 	private long extractMinSize; 
 	
-	@Value("${d2rml.extract.temp-folder:null}")
-	private String extractTempFolder;
-
 	@Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfiguration;
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
 
 	@Autowired
 	@Qualifier("filesystem-configuration")
-	private FileSystemConfiguration fileSystemConfiguration;
+	public FileSystemConfiguration fileSystemConfiguration;
 
 	@Autowired
-	VirtuosoJDBC virtuosoJDBC;
-	
-	public MappingDocument create(UserPrincipal currentUser, String datasetId, String type, String name, String d2rml, List<String> params, String fileName) {
-		MappingDocument map = new MappingDocument();
-		map.setUserId(new ObjectId(currentUser.getId()));
-		map.setDatasetId(new ObjectId(datasetId));
-		map.setType(MappingType.get(type));
-		map.setUuid(UUID.randomUUID().toString());
-		map.setName(name);
-		map.setD2RML(d2rml);
-		map.setParameters(params);
-		map.setFileName(fileName);
-		
-		map = mappingsRepository.save(map);
+	private FolderService folderService;
 
-		return map;
-		
+	@Autowired
+	private SEMRVocabulary resourceVocabulary;
+	
+	@Autowired
+	private TripleStore tripleStore;
+
+	@Override
+	public Class<? extends ObjectContainer> getContainerClass() {
+		return MappingContainer.class;
 	}
 
-	public MappingDocument create(UserPrincipal currentUser, String datasetId, String type, String name, String d2rml, List<String> params, String fileName, String uuid) {
+	public class MappingContainer extends ObjectContainer implements ExecutableContainer, IntermediatePublishableContainer {
+		private ObjectId mappingId;
+		private ObjectId mappingInstanceId;
+		
+		private MappingDocument mappingDocument;
+		private MappingInstance mappingInstance;
+		
+		private FileSystemConfiguration containerFileSystemConfiguration;
+		
+		public MappingContainer(UserPrincipal currentUser, Dataset dataset, MappingDocument mappingDocument, MappingInstance mappingInstance) {
+			containerFileSystemConfiguration = fileSystemConfiguration;
+			
+			this.mappingId = mappingDocument.getId();
+			if (mappingInstance != null) {
+				this.mappingInstanceId = mappingInstance.getId();
+			}
+			
+			this.currentUser = currentUser;
+			
+			this.dataset = dataset;
+			
+			this.mappingDocument = mappingDocument;
+			this.mappingInstance = mappingInstance;
+			
+		}
+		
+		public MappingContainer(UserPrincipal currentUser, String mappingId, String mappingInstanceId) {
+			containerFileSystemConfiguration = fileSystemConfiguration;
+			
+			this.mappingId = new ObjectId(mappingId);
+			this.mappingInstanceId = mappingInstanceId  != null ? new ObjectId(mappingInstanceId) : null;
+
+			this.currentUser = currentUser;
+			
+			load();
+			
+			loadDataset();
+			
+		}
+		
+		public MappingContainer(UserPrincipal currentUser, ObjectId mappingId, ObjectId mappingInstanceId) {
+			containerFileSystemConfiguration = fileSystemConfiguration;
+			
+			this.mappingId = mappingId;
+			this.mappingInstanceId = mappingInstanceId;
+
+			this.currentUser = currentUser;
+			
+			load();
+			
+			loadDataset();
+			
+		}
+		
+		public MappingContainer(DatasetContainer dc, String mappingId, String mappingInstanceId) {
+			containerFileSystemConfiguration = fileSystemConfiguration;
+			
+			this.mappingId = new ObjectId(mappingId);
+			this.mappingInstanceId = mappingInstanceId  != null ? new ObjectId(mappingInstanceId) : null;
+			
+			this.currentUser = dc.getCurrentUser();
+
+			this.dataset = dc.getDataset();
+
+			load();
+			
+			loadDataset();
+		}
+		
+		public MappingContainer(UserPrincipal currentUser, MappingDocument mc, MappingInstance mi) {
+			containerFileSystemConfiguration = fileSystemConfiguration;
+			
+			this.mappingId = mc.getId();
+			this.mappingInstanceId = mc.hasParameters() ? mi.getId() : null;
+			
+			this.currentUser = currentUser;
+
+			mappingDocument = mc;
+			mappingInstance = mi;
+			
+			loadDataset();
+		}
+		
+		@Override
+		protected void load() {
+			Optional<MappingDocument> mappingOpt = mappingsRepository.findByIdAndUserId(mappingId, new ObjectId(currentUser.getId()));
+
+			if (!mappingOpt.isPresent()) {
+				return;
+			}
+
+			mappingDocument = mappingOpt.get();
+			mappingInstance = findMappingInstance(mappingDocument, mappingInstanceId != null ? mappingInstanceId.toString() : null);
+		}
+		
+		@Override
+		protected void loadDataset() {
+			Optional<Dataset> datasetOpt = datasetRepository.findByIdAndUserId(mappingDocument.getDatasetId(), new ObjectId(currentUser.getId()));
+
+			if (!datasetOpt.isPresent()) {
+				return;
+			}
+		
+			dataset = datasetOpt.get();			
+		}
+		
+		@Override
+		public void save(MongoUpdateInterface ui) throws Exception {
+			synchronized (saveSyncString()) { 
+				load();
+			
+				ui.update(this);
+				
+				mappingsRepository.save(mappingDocument);
+			}
+		}
+
+		@Override
+		public MappingExecutePublishDocument<MappingPublishState> getPublishDocument() {
+			return getMappingInstance();
+		}
+		
+		@Override
+		public ExecuteDocument getExecuteDocument() {
+			return getMappingInstance();
+		}
+
+		public MappingDocument getMappingDocument() {
+			return mappingDocument;
+		}
+
+		public void setMappingDocument(MappingDocument mappingDocument) {
+			this.mappingDocument = mappingDocument;
+		}
+
+		@Override
+		public ObjectId getPrimaryId() {
+			return getMappingId();
+		}
+		
+		@Override
+		public ObjectId getSecondaryId() {
+			return getMappingInstanceId();
+		}
+		
+		public ObjectId getMappingId() {
+			return mappingId;
+		}
+		
+//		@Override
+//		public MappingExecuteState getExecuteState() {
+//			return getExecuteDocument().getExecuteState(containerFileSystemConfiguration.getId());
+//		}
+//
+//		@Override
+//		public MappingExecuteState checkExecuteState() {
+//			return mappingInstance.checkExecuteState(containerFileSystemConfiguration.getId());
+//		}
+//
+////		@Override
+//		public void deleteExecuteState() {
+//			mappingInstance.deleteExecuteState(containerFileSystemConfiguration.getId());
+//		}
+		
+		public void setMappingId(ObjectId mappingId) {
+			this.mappingId = mappingId;
+		}
+
+		public ObjectId getMappingInstanceId() {
+			return mappingInstanceId;
+		}
+
+		public void setMappingInstanceId(ObjectId mappingInstanceId) {
+			this.mappingInstanceId = mappingInstanceId;
+		}
+		
+		public String idsToString() {
+			return mappingId + (mappingInstanceId != null ? ("_" + mappingInstanceId) : "");
+		}
+		
+		public MappingInstance getMappingInstance() {
+			return mappingInstance;
+		}
+		
+		@Override
+		public String localSynchronizationString() {
+			return getContainerFileSystemConfiguration().getId() + ":" + mappingId + (mappingInstanceId != null ? ":" + mappingInstanceId : "");
+		}
+
+		@Override
+		public FileSystemConfiguration getContainerFileSystemConfiguration() {
+			return containerFileSystemConfiguration;
+		}
+
+		@Override
+		public boolean clearExecution() {
+			return MappingsService.this.clearExecution(this);
+		}
+		
+		@Override
+		public boolean clearExecution(MappingExecuteState es) {
+			return MappingsService.this.clearExecution(this, es);
+		}
+		
+		@Override
+		public MappingResponse asResponse() {
+			return modelMapper.mapping2MappingResponse(getDatasetTripleStoreVirtuosoConfiguration(), mappingDocument, currentUser);
+		}
+
+		@Override
+		public TaskType getExecuteTask() {
+			return TaskType.MAPPING_EXECUTE;
+		}
+
+		@Override
+		public TaskType getClearLastExecutionTask() {
+			return TaskType.MAPPING_CLEAR_LAST_EXECUTION;
+		}
+		
+		@Override
+		public ConfigurationContainer<TripleStoreConfiguration> getVirtuosoConfigurations() {
+			return virtuosoConfigurations;
+		}	
+		
+		@Override
+		public String syncString() {
+			return ("SYNC:" + containerString() + ":" + mappingId + (mappingInstanceId != null ? ":" + mappingInstanceId : "")).intern();
+		}
+		
+		@Override
+		public String saveSyncString() {
+			return ("SYNC:SAVE:" + containerString() + ":" + mappingId).intern();
+		}
+
+		@Override
+		public boolean delete() throws Exception {
+			throw new Exception("Not implemented");
+		}
+
+	}
+	
+	public static String syncString(String id, String instanceId) {
+		return ("SYNC:" + MappingContainer.class.getName() + ":" + id + (instanceId != null ? instanceId : "")).intern();
+	}
+
+	@Override
+	public String synchronizedString(String id) {
+		// TODO Auto-generated method stub
+		throw new Error("NOT IMPLEMENTED");
+	}
+
+	
+	public List<MappingContainer> getMappingContainers(DatasetContainer dc) {
+		List<MappingContainer> res = new ArrayList<>();
+		
+		for (MappingDocument mdoc : mappingsRepository.findByDatasetId(dc.getDatasetId())) {
+			for (MappingInstance mi : mdoc.getInstances()) {
+				res.add(new MappingContainer(dc.getCurrentUser(), mdoc, mi));
+			}
+		}
+		
+		return res;
+	}
+	
+	public MappingDocument create(UserPrincipal currentUser, String datasetId, MappingType type, String name, List<String> params, String templateId) throws Exception  {
+		return create(currentUser, datasetId, type, name, params, null, "", templateId);
+	}
+	
+	public MappingDocument create(UserPrincipal currentUser, String datasetId, MappingType type, String name, List<String> params, String fileName, String fileContents) throws Exception {
+		return create(currentUser, datasetId, type, name, params, fileName, fileContents, null);
+	}
+	
+	public MappingDocument create(UserPrincipal currentUser, String datasetId, MappingType type, String name, List<String> params, String fileName, String fileContents, String templateId) throws Exception {
+		String uuid = UUID.randomUUID().toString();
 		MappingDocument map = new MappingDocument();
 		map.setUserId(new ObjectId(currentUser.getId()));
 		map.setDatasetId(new ObjectId(datasetId));
-		map.setType(MappingType.get(type));
+		map.setDatabaseId(database.getId());
+		map.setType(type);
 		map.setUuid(uuid);
 		map.setName(name);
-		map.setD2RML(d2rml);
+//		if (d2rml != null) {
+//			map.setD2RML(d2rml.replaceAll("__X_SAGE_MAPPING_UUID__", uuid)); //should find a better way
+//		}
 		map.setParameters(params);
 		map.setFileName(fileName);
+		if (templateId == null) {
+			map.setFileContents(fileContents);
+		} else {
+			Optional<Template> tempOpt = templateRepository.findById(new ObjectId(templateId));
+			
+			if (!tempOpt.isPresent()) {
+				map.setFileContents("");
+			} else {
+				map.setFileContents(templateService.getEffectiveTemplateString(tempOpt.get()));
+			}
+		}
+		
+		map.setUpdatedAt(new Date());
+		
+		map = mappingsRepository.save(map);
+
+		return map;
+		
+	}
+
+	public MappingDocument create(UserPrincipal currentUser, String datasetId, MappingType type, String name, List<String> params, String fileName, String fileContents, String uuid, Template template) {
+		MappingDocument map = new MappingDocument();
+		map.setUserId(new ObjectId(currentUser.getId()));
+		map.setDatasetId(new ObjectId(datasetId));
+		map.setDatabaseId(database.getId());
+		map.setType(type);
+		map.setUuid(uuid);
+		map.setName(name);
+//		if (d2rml != null) {
+//			map.setD2RML(d2rml.replaceAll("__X_SAGE_MAPPING_UUID__", uuid)); //should find a better way
+//		} else {
+//			map.setD2RML(null); //shouldn't be the case
+//		}
+		map.setParameters(params);
+		map.setFileName(fileName);
+		map.setFileContents(fileContents);
+		map.setUpdatedAt(new Date());
+		map.setTemplateId(template.getId());
+		
 
 		map = mappingsRepository.save(map);
 
 		return map;
-
 	}
 
-	public boolean updateMapping(UserPrincipal currentUser, String id, String name, String d2rml, List<String> parameters, String fileName) {
+	public boolean updateMapping(UserPrincipal currentUser, String id, String name, List<String> parameters, String fileName, String fileContents) {
 
 		Optional<MappingDocument> entry = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
 
-		if (entry.isPresent()) {
-			MappingDocument doc = entry.get();
-			if (name != null) {
-				doc.setName(name);
-			}
-			
-			if (d2rml != null) {
-				doc.setD2RML(d2rml);
-			}
-			
-			if (fileName != null) {
-				doc.setFileName(fileName);
-			}
-			
-			doc.setParameters(parameters);
+		if (!entry.isPresent()) {
+			return false;
+		}
+		
+		MappingDocument doc = entry.get();
+		if (name != null) {
+			doc.setName(name);
+		}
+	
+//			doc.setD2RML(null); // remove legacy d2rml content
+	
+//			if (d2rml != null) {
+//				doc.setD2RML(d2rml.replaceAll("__X_SAGE_MAPPING_UUID__", doc.getUuid())); //should find a better way
+		doc.setUpdatedAt(new Date());
+//			}
+		
+		if (fileName != null) {
+			doc.setFileName(fileName);
+			doc.setFileContents(fileContents);
+		}
+		
+		doc.setParameters(parameters);
 
-			mappingsRepository.save(doc);
-			
-			return true;
+		mappingsRepository.save(doc);
+		
+		return true;
+	}
+
+	public MappingInstance createParameterBinding(MappingContainer mc, List<ParameterBinding> bindings) {
+
+		MappingDocument doc = mc.getMappingDocument();
+		MappingInstance mi = doc.addInstance(bindings);
+
+		mappingsRepository.save(doc);
+
+		return mi;
+	}
+	
+	public MappingInstance updateParameterBinding(MappingContainer mc, List<ParameterBinding> bindings) {
+
+		MappingInstance mi = mc.getMappingInstance();
+		mi.setBinding(bindings);
+
+		mappingsRepository.save(mc.getMappingDocument());
+
+		return mi;
+	}
+	
+	public boolean deleteParameterBinding(MappingContainer mc) throws IOException {
+
+		MappingDocument doc = mc.getMappingDocument();
+
+		clearExecution(mc);
+		
+		List<MappingInstance> list = doc.getInstances();
+		for (int k = 0; k < list.size(); k++) {
+			MappingInstance mi = list.get(k);
+			if (mi.getId().equals(mc.getMappingInstanceId())) {
+				list.remove(k);
+				break;
+			}
 		}
 
-		return false;
+		mappingsRepository.save(doc);
+
+		return true;
 	}
+
+	
 	public List<MappingResponse> getMappings(UserPrincipal currentUser, String datasetId) {
 
-		List<MappingDocument> docs = mappingsRepository.findByDatasetIdAndUserId(new ObjectId(datasetId),
-				new ObjectId(currentUser.getId()));
+		Optional<Dataset> datasetOpt = datasetRepository.findByIdAndUserId(new ObjectId(datasetId), new ObjectId(currentUser.getId()));
 
-		List<MappingResponse> response = docs.stream().map(doc -> modelMapper.mapping2MappingResponse(virtuosoConfiguration.values(), doc, currentUser))
+		if (!datasetOpt.isPresent()) {
+			return new ArrayList<>();
+		}
+		
+		Dataset dataset = datasetOpt.get();
+		
+		ProcessStateContainer psv = dataset.getCurrentPublishState(virtuosoConfigurations.values());
+
+		List<MappingDocument> docs = mappingsRepository.findByDatasetIdAndUserId(new ObjectId(datasetId), new ObjectId(currentUser.getId()));
+
+		final TripleStoreConfiguration vc = psv != null ? psv.getTripleStoreConfiguration() : null;
+		
+		List<MappingResponse> response = docs.stream().map(doc -> modelMapper.mapping2MappingResponse(vc, doc, currentUser))
 				.collect(Collectors.toList());
 
 		return response;
 	}
 
 	public List<MappingDocument> getHeaderMappings(UserPrincipal currentUser, ObjectId datasetId) {
-
-		List<MappingDocument> docs = mappingsRepository.findByUserIdAndDatasetIdAndType(new ObjectId(currentUser.getId()), datasetId, "HEADER");
-
-		return docs;
+		return mappingsRepository.findByUserIdAndDatasetIdAndType(new ObjectId(currentUser.getId()), datasetId, "HEADER");
 	}
 
-	public boolean deleteMapping(UserPrincipal currentUser, String mappingId) {
+	// TODO should delete also relevant uploaded files!
+	public boolean deleteMapping(UserPrincipal currentUser, String mappingId) throws IOException {
 
 		Optional<MappingDocument> entry = mappingsRepository.findByIdAndUserId(new ObjectId(mappingId), new ObjectId(currentUser.getId()));
 
 		if (!entry.isPresent()) {
 			return false;
 		}
+		
 		MappingDocument doc = entry.get();
 
 		// Clear execution of all mapping instances of the mapping
@@ -221,146 +583,181 @@ public class MappingsService {
 		else {
 			clearExecution(currentUser, mappingId, null);
 		}
-
+		
+		if (doc.getDataFiles() != null) {
+			for (String s : doc.getDataFiles()) {
+				folderService.deleteAttachment(currentUser, doc, s);
+			}
+		}
+		
 		// Now delete the mapping
 		mappingsRepository.delete(doc);
 
 		return true;
 	}
-	
 
 
-	public boolean deleteParameterBinding(UserPrincipal currentUser, String id, String instanceId) throws IOException {
-
-		Optional<MappingDocument> entry = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
-
-		if (!entry.isPresent()) {
-			return false;
-		}
-
-		clearExecution(currentUser, id, instanceId);
-
-		MappingDocument doc = entry.get();
-		
-		List<MappingInstance> list = doc.getInstances();
-		for (int k = 0; k < list.size(); k++) {
-			MappingInstance mi = list.get(k);
-			if (mi.getId().toString().equals(instanceId)) {
-				list.remove(k);
-				break;
-			}
-		}
-
-		mappingsRepository.save(doc);
-
-		return true;
-	}
-
-	public Optional<MappingResponse> getMapping(UserPrincipal currentUser, String mappingId) {
-
-		Optional<MappingDocument> doc = mappingsRepository.findByIdAndUserId(new ObjectId(mappingId),
-				new ObjectId(currentUser.getId()));
-		if (doc.isPresent()) {
-			return Optional.of(modelMapper.mapping2MappingResponse(virtuosoConfiguration.values(), doc.get(), currentUser));
-		} else {
-			return Optional.empty();
-		}
-	}
-
-	
-	public Optional<String> getLastExecution(UserPrincipal currentUser, String id, String instanceId)
-			throws IOException {
-
-		Optional<MappingDocument> mappingOpt = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
-
-		if (!mappingOpt.isPresent()) {
-			return Optional.empty();
-		}
-
-		MappingDocument doc = mappingOpt.get();
-
-		Optional<Dataset> datasetOpt = datasetRepository.findByIdAndUserId(doc.getDatasetId(), new ObjectId(currentUser.getId()));
-
-		if (!datasetOpt.isPresent()) {
-			return Optional.empty();
-		}
-		
-		Dataset dataset = datasetOpt.get();
-		
-		MappingInstance mi = getMappingInstance(doc, instanceId);
-
-		String datasetFolder = fileSystemConfiguration.getUserDataFolder(currentUser) + mappingsFolder + dataset.getUuid() + "/";
-		String fileName = doc.getUuid() + (instanceId == null ? "" : "_" + mi.getId().toString()) + ".trig";
-
-		File fileToRead = new File(datasetFolder + fileName); 
-		if (!fileToRead.exists()) {
-			//for compatibility
-			fileToRead = new File(fileSystemConfiguration.getUserDataFolder(currentUser) + mappingsFolder + fileName); 
-		}
-
-		if (fileToRead.exists()) {
-//	     	String filex = new String(Files.readAllBytes(path));
-		
-			String file = AsyncUtils.readFileBeginning(Paths.get(fileToRead.getAbsolutePath()));
-			return Optional.of(file);
-		} else {
-			logger.error("File " + fileToRead + " does not exist." );
-			return Optional.empty();
-		}
-
-		
-	}
+//	public Optional<MappingResponse> getMapping(UserPrincipal currentUser, String mappingId) {
+//
+//		Optional<MappingDocument> dopt = mappingsRepository.findByIdAndUserId(new ObjectId(mappingId), new ObjectId(currentUser.getId()));
+//
+//		if (!dopt.isPresent()) {
+//			return Optional.empty();
+//		}
+//		
+//		MappingDocument doc = dopt.get();
+//		
+//		Optional<Dataset> datasetOpt = datasetRepository.findByIdAndUserId(doc.getDatasetId(), new ObjectId(currentUser.getId()));
+//
+//		if (!datasetOpt.isPresent()) {
+//			return Optional.empty();
+//		}
+//		
+//		Dataset dataset = datasetOpt.get();
+//		
+//		PublishStateVirtuoso psv = dataset.getCurrentPublishState(virtuosoConfigurations.values());
+//
+//		final TripleStoreConfiguration vc = psv != null ? psv.getVirtuosoConfiguration() : null;
+//
+//		MappingResponse mr = modelMapper.mapping2MappingResponse(vc, doc, currentUser);
+//
+//		// for compatibility <--
+////		for (int i = 0; i < mr.getInstances().size(); i++) {
+////			MappingInstanceResponse mir = mr.getInstances().get(i);
+////			if (mir.isLegacy()) {
+////				File f = folderService.getMappingExecutionTrigFile(currentUser, dataset, doc, doc.getInstances().get(i), doc.getInstances().get(i).checkExecuteState(fileSystemConfiguration.getId()), 0);
+////				if (f != null) {
+////					mir.setPublishedFromCurrentFileSystem(true);
+////				}
+////			}
+////		}
+//		// for compatibility -->
+//		
+//		return Optional.of(mr);
+//	}
 
 	
-	public Optional<String> downloadLastExecution(UserPrincipal currentUser, String id, String instanceId) throws IOException {
-
-		Optional<MappingDocument> mappingOpt = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
-
-		if (!mappingOpt.isPresent()) {
-			return Optional.empty();
-		}
-
-		MappingDocument doc = mappingOpt.get();
-
-		Optional<Dataset> datasetOpt = datasetRepository.findByIdAndUserId(doc.getDatasetId(), new ObjectId(currentUser.getId()));
-
-		if (!datasetOpt.isPresent()) {
-			return Optional.empty();
-		}
-		
-		Dataset dataset = datasetOpt.get();
-		
-		MappingInstance mi = getMappingInstance(doc, instanceId);
-		
-		ExecuteState  es = mi.getExecuteState(fileSystemConfiguration.getId());
-
-		String datasetFolder = fileSystemConfiguration.getUserDataFolder(currentUser) + mappingsFolder + dataset.getUuid() + "/";
-		String fileName = doc.getUuid() + (instanceId == null ? "" : "_" + mi.getId().toString()) + ".zip";
-
-		String file = datasetFolder + fileName;
-
-		if (es.getExecuteState() == MappingState.EXECUTED) {
-			if (new File(file).exists()) {
-				
-			} else {
-				// for compatibility
-				datasetFolder = fileSystemConfiguration.getUserDataFolder(currentUser) + mappingsFolder;
-				file = datasetFolder + fileName;
-				
-				if (!new File(file).exists()) {
-					zipExecution(datasetFolder, doc, instanceId, mi, es.getExecuteShards() == 0 ? 1 : es.getExecuteShards());
-				}
-			}			
-			
-			return Optional.of(file);
-		}
-		
-		return Optional.empty();
-	}
+//	public Optional<String> previewLastExecution(UserPrincipal currentUser, String id, String instanceId) throws IOException {
+//		
+//		MappingContainer mc = new MappingContainer(currentUser, id, instanceId);
+//
+//		if (mc.mappingDocument == null) {
+//			return Optional.empty();
+//		}
+//		
+//		ExecuteState es = mc.mappingInstance.getExecuteState(fileSystemConfiguration.getId());
+//
+//		if (es.getExecuteState() != MappingState.EXECUTED) {
+//			return Optional.empty();
+//		}
+//
+//		File file = folderService.getMappingExecutionTrigFile(currentUser, mc.getDataset(), mc.getMappingDocument(), mc.getMappingInstance(), es, 0);
+//		
+//		if (file != null) {
+//			String res = FileUtils.readFileBeginning(Paths.get(file.getAbsolutePath()));
+//			return Optional.of(res);
+//		} else {
+//			logger.error("Execution file for mapping " + mc.mappingDocument.getUuid() + (instanceId == null ? "" : "/" + instanceId) + " not found.");
+//			return Optional.of("Execution file for mapping '" + mc.mappingDocument.getName() + (instanceId == null ? "" : "/" + instanceId) + "' not found.");
+//		}
+//	}
 	
-	private MappingInstance getMappingInstance(MappingDocument doc, String instanceId) {
+	
+//	public Optional<String> previewPublishedExecution(UserPrincipal currentUser, String id, String instanceId) throws IOException {
+//		MappingContainer mc = new MappingContainer(currentUser, id, instanceId);
+//
+//		if (mc.mappingDocument == null) {
+//			return Optional.empty();
+//		}
+//		
+//		ProcessStateContainer psv = mc.mappingInstance.getCurrentPublishState(virtuosoConfigurations.values());
+//		if (psv == null) {
+//			return Optional.empty();			
+//		}
+//		
+//		MappingPublishState ps = (MappingPublishState)psv.getProcessState();
+//		ExecuteState pes = ps.getExecute();
+//		
+//		if (!pes.getDatabaseConfigurationId().equals(fileSystemConfiguration.getId())) {
+//			return Optional.empty();
+//		}
+//		
+//		if (pes.getExecuteState() != MappingState.EXECUTED) {
+//			return Optional.empty();
+//		}
+//
+//		File file = folderService.getMappingExecutionTrigFile(currentUser, mc.getDataset(), mc.getMappingDocument(), mc.getMappingInstance(), pes, 0);
+//		
+//		if (file != null) {
+////	     	String res = new String(Files.readAllBytes(path));
+//			String res = FileUtils.readFileBeginning(Paths.get(file.getAbsolutePath()));
+//			return Optional.of(res);
+//		} else {
+//			logger.error("Execution file for mapping " + mc.mappingDocument.getUuid() + (instanceId == null ? "" : "/" + instanceId) + " not found.");
+//			return Optional.of("Execution file for mapping '" + mc.mappingDocument.getName() + (instanceId == null ? "" : "/" + instanceId) + "' not found.");
+//		}
+//	}	
+
+//	public Optional<String> downloadLastExecution(UserPrincipal currentUser, String id, String instanceId) throws IOException {
+//		MappingContainer mc = new MappingContainer(currentUser, id, instanceId);
+//
+//		if (mc.mappingDocument == null) {
+//			return Optional.empty();
+//		}
+//		
+//		MappingExecuteState es = mc.mappingInstance.getExecuteState(fileSystemConfiguration.getId());
+//
+//		if (es.getExecuteState() != MappingState.EXECUTED) {
+//			return Optional.empty();
+//		}
+//		
+//		File file = folderService.getMappingExecutionZipFile(currentUser, mc.getDataset(), mc.getMappingDocument(), mc.getMappingInstance(), es);
+//
+//		// for compatibility
+//		if (file == null) {
+//			file = zipExecution(currentUser, mc.getDataset(), mc.getMappingDocument(), mc.getMappingInstance(), es, es.getExecuteShards() == 0 ? 1 : es.getExecuteShards(), es.getSparqlExecuteShards());
+//		}			
+//		
+//		return Optional.of(file.getAbsolutePath());
+//	}
+	
+//	public Optional<String> downloadPublishedExecution(UserPrincipal currentUser, String id, String instanceId) throws IOException {
+//		MappingContainer mc = new MappingContainer(currentUser, id, instanceId);
+//
+//		if (mc.mappingDocument == null) {
+//			return Optional.empty();
+//		}
+//
+//		ProcessStateContainer psv = mc.mappingInstance.getCurrentPublishState(virtuosoConfigurations.values());
+//		if (psv == null) {
+//			return Optional.empty();			
+//		}
+//		
+//		MappingPublishState ps = (MappingPublishState)psv.getProcessState();
+//		MappingExecuteState pes = ps.getExecute();
+//		
+//		if (!pes.getDatabaseConfigurationId().equals(fileSystemConfiguration.getId())) {
+//			return Optional.empty();
+//		}
+//		
+//		if (pes.getExecuteState() != MappingState.EXECUTED) {
+//			return Optional.empty();
+//		}
+//		
+//		File file = folderService.getMappingExecutionZipFile(currentUser, mc.getDataset(), mc.getMappingDocument(), mc.getMappingInstance(), pes);
+//
+//		// for compatibility
+//		if (file == null) {
+//			file = zipExecution(currentUser, mc.getDataset(), mc.getMappingDocument(), mc.getMappingInstance(), pes, pes.getExecuteShards() == 0 ? 1 : pes.getExecuteShards(), pes.getSparqlExecuteShards());
+//		}			
+//		
+//		return Optional.of(file.getAbsolutePath());
+//	}
+	
+	public MappingInstance findMappingInstance(MappingDocument doc, String instanceId) {
 		MappingInstance mi = null;
-		if (instanceId == null) {
+		if (instanceId == null && doc.getInstances().size() == 0) {
+		} else if (instanceId == null) {
 			mi = doc.getInstances().get(0);
 		} else {
 			for (MappingInstance mix : doc.getInstances()) {
@@ -375,97 +772,124 @@ public class MappingsService {
 	}
 	
 	public boolean clearExecution(UserPrincipal currentUser, String id, String instanceId) {
-
-		Optional<MappingDocument> mappingOpt = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
-
-		if (!mappingOpt.isPresent()) {
-			return false;
-		}
-
-		MappingDocument doc = mappingOpt.get();
-
-		Optional<Dataset> datasetOpt = datasetRepository.findByIdAndUserId(doc.getDatasetId(), new ObjectId(currentUser.getId()));
+		return clearExecution(getContainer(currentUser, id, instanceId));
+	}
+	
+	public boolean clearExecution(MappingContainer mc) {
+		MappingExecuteState es = mc.mappingInstance.checkExecuteState(fileSystemConfiguration.getId());
 		
-		if (!datasetOpt.isPresent()) {
+		if (es == null || es.getExecuteState() != MappingState.EXECUTED) {
 			return false;
 		}
 		
-		Dataset dataset = datasetOpt.get();
-		String datasetFolder = fileSystemConfiguration.getUserDataFolder(currentUser) + mappingsFolder + dataset.getUuid() + "/";
-
-		MappingInstance mi = getMappingInstance(doc, instanceId);
-		ExecuteState es = mi.getExecuteState(fileSystemConfiguration.getId());
-
-		for (int i = 0; i < es.getExecuteShards(); i++) {
-			String fileName =  doc.getUuid() + (instanceId != null ? "_" + mi.getId().toString() : "") + (i == 0 ? "" : "_#" + i) + ".trig";
-			
-			try {
-				File f = new File(datasetFolder + fileName);
-				boolean ok = false;
-				if (f.exists()) {
-					ok = f.delete();
-					if (ok) {
-						logger.info("Deleted " + f.getName());
-					}
-				} else {
-					// for compatibility
-					f = new File(fileSystemConfiguration.getUserDataFolder(currentUser) + mappingsFolder + fileName);
-					if (f.exists()) {
+		return clearExecution(mc.getCurrentUser(), mc.getDataset(), mc.getMappingDocument(), mc.getMappingInstance(), es);
+	}
+	
+	private boolean clearExecution(MappingContainer mc, MappingExecuteState es) {
+		return clearExecution(mc.getCurrentUser(), mc.getDataset(), mc.getMappingDocument(), mc.getMappingInstance(), es);
+	}
+	
+	public boolean clearExecution(UserPrincipal currentUser, Dataset dataset, MappingDocument doc, MappingInstance mi, MappingExecuteState es) {
+		
+		ProcessStateContainer psv = mi.getCurrentPublishState(virtuosoConfigurations.values());
+		
+		if (psv != null) {
+			MappingPublishState ps = (MappingPublishState)psv.getProcessState();
+			MappingExecuteState pes = ps.getExecute();
+	
+			// do not clear published execution
+			if (pes != null && pes.getExecuteStartedAt().compareTo(es.getExecuteStartedAt()) == 0 && pes.getDatabaseConfigurationId().equals(es.getDatabaseConfigurationId())) {	
+				return false;
+			} 
+		}
+		
+		// trig files
+		if (es.getExecuteShards() != null) {
+			for (int i = 0; i < es.getExecuteShards(); i++) {
+				try {
+					File f = folderService.getMappingExecutionTrigFile(currentUser, dataset, doc, mi, es, i);
+					boolean ok = false;
+					if (f != null) {
 						ok = f.delete();
 						if (ok) {
-							logger.info("Deleted " + f.getName());
+							logger.info("Deleted file " + f.getAbsolutePath());
 						}
 					}
+					if (!ok) {
+						logger.warn("Failed to delete trig execution " + i + " for mapping " + doc.getUuid() + (mi.getBinding().size() == 0 ? "" : "/" + mi.getId()));
+					}
+				} catch (Exception e) {
+					e.printStackTrace();
 				}
-				if (!ok) {
-					logger.warn("Failed to delete " + f.getName());
-				}
-			} catch (Exception e) {
-				e.printStackTrace();
 			}
 		}
-			
+		
+		// txt files		
+		if (es.getSparqlExecuteShards() != null) {
+			for (int i = 0; i < es.getSparqlExecuteShards(); i++) {
+				try {
+					File f = folderService.getMappingExecutionTxtFile(currentUser, dataset, doc, mi, es, i);
+					boolean ok = false;
+					if (f != null) {
+						ok = f.delete();
+						if (ok) {
+							logger.info("Deleted file " + f.getAbsolutePath());
+						}
+					}
+					if (!ok) {
+						logger.warn("Failed to delete txt execution " + i + " for mapping " + doc.getUuid() + (mi.getBinding().size() == 0 ? "" : "/" + mi.getId()));
+					}
+				} catch (Exception e) {
+					e.printStackTrace();
+				}
+			}
+		}
+		
 		try {
-			String fileName =  doc.getUuid() + (instanceId != null ? "_" + mi.getId().toString() : "") + ".zip";
-			File f = new File(datasetFolder + fileName);
+			File f = folderService.getMappingExecutionZipFile(currentUser, dataset, doc, mi, es);
 			boolean ok = false;
-			if (f.exists()) {
+			if (f != null) {
 				ok = f.delete();
 				if (ok) {
 					logger.info("Deleted file " + f.getAbsolutePath());
 				}
-			} else {
-				// for compatibility
-				f = new File(fileSystemConfiguration.getUserDataFolder(currentUser) + mappingsFolder + fileName);
-				if (f.exists()) {
-					ok = f.delete();
-					if (ok) {
-						logger.info("Deleted file " + f.getAbsolutePath());
-					}
-				}
 			}
 			if (!ok) {
-				logger.warn("Failed to delete " + f.getAbsolutePath());
+				logger.warn("Failed to delete zipped execution for mapping " + doc.getUuid() + (mi.getBinding().size() == 0 ? "" : "/" + mi.getId()));
 			}
+			
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
 		
-		File ff = new File(datasetFolder);
-		if (ff.exists() && ff.isDirectory() && ff.list().length == 0) {
-			boolean ok = ff.delete();
-			if (ok) {
-				logger.info("Deleted folder " + ff.getAbsolutePath());
-			}
-			
-		}
+		folderService.deleteMappingsExecutionDatasetFolderIfEmpty(currentUser, dataset);
 		
-		mi.deleteExecuteState(fileSystemConfiguration.getId());
+		if (mi.checkExecuteState(fileSystemConfiguration.getId()) == es) {
+			mi.deleteExecuteState(fileSystemConfiguration.getId());
+		
+			if (psv != null) {
+				MappingPublishState ps = (MappingPublishState)psv.getProcessState();
+				MappingExecuteState pes = ps.getExecute();
+		
+				// do not clear published execution
+				if (pes != null && pes.getExecuteStartedAt().compareTo(es.getExecuteStartedAt()) != 0 && pes.getDatabaseConfigurationId().equals(es.getDatabaseConfigurationId())) {
+					MappingExecuteState nes = mi.getExecuteState(fileSystemConfiguration.getId());
+					nes.setCount(pes.getCount());
+					nes.setSparqlCount(pes.getSparqlCount());
+					nes.setExecuteCompletedAt(pes.getExecuteCompletedAt());
+					nes.setExecuteStartedAt(pes.getExecuteStartedAt());
+					nes.setExecuteShards(pes.getExecuteShards());
+					nes.setExecuteState(pes.getExecuteState());
+				}
+			}
+		} 
+		
 		mappingsRepository.save(doc);
 
 		return true;
 	}	
-	
+
+
 	//very experimental and problematic.
 	public boolean unpublish(UserPrincipal currentUser, String id, String instanceId) throws Exception {
 
@@ -485,24 +909,13 @@ public class MappingsService {
 		
 		Dataset dataset = dOpt.get();
 		
-		PublishState ps = null;
-		String virtuoso = null;
-
-		for (VirtuosoConfiguration vc : virtuosoConfiguration.values()) {
-			ps = dataset.checkPublishState(vc.getId());
-			if (ps != null) {
-				virtuoso = vc.getName();
-				break;
-			}
-		}
-		
-		if (ps == null) {
+		ProcessStateContainer psv = dataset.getCurrentPublishState(virtuosoConfigurations.values());
+		if (psv == null) {
 			return false;
 		}
 		
-		
-		MappingInstance mi = getMappingInstance(mapping, instanceId);
-		PublishState mappingPs = mi.checkPublishState(virtuosoConfiguration.get(virtuoso).getId());
+		MappingInstance mi = findMappingInstance(mapping, instanceId);
+		PublishState mappingPs = mi.checkPublishState(psv.getTripleStoreConfiguration().getId());
 		
 		if (mappingPs == null) {
 			return false;
@@ -511,118 +924,137 @@ public class MappingsService {
 		mappingPs.setPublishState(DatasetState.UNPUBLISHING);
 		mappingsRepository.save(mapping);
 		
-		virtuosoJDBC.unpublishMapping(currentUser, virtuoso, dataset, mapping, mi);
+		tripleStore.unpublishMapping(currentUser, psv.getTripleStoreConfiguration(), dataset, mapping, mi);
 		
 		mappingPs.setPublishState(DatasetState.UNPUBLISHED);
 		mappingsRepository.save(mapping);
 			
-			
 		return true;
 	}	
 	
-	public MappingInstance createParameterBinding(UserPrincipal currentUser, String id, List<ParameterBinding> bindings) {
+	public MappingContainer getContainer(DatasetContainer dc, String mappingId) {
+		return getContainer(dc, mappingId, null);
+	}
+		
 
-		Optional<MappingDocument> entry = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
+	public MappingContainer getContainer(DatasetContainer dc, String mappingId, String mappingInstanceId) {
+		MappingContainer mc = new MappingContainer(dc, mappingId, mappingInstanceId);
+		if (mappingInstanceId == null) {
+			if (mc.mappingDocument == null || mc.getDataset() == null) {
+				return null;
+			} else {
+				return mc;
+			}
+		} else {
+			if (mc.mappingDocument == null || mc.getDataset() == null || mc.getMappingInstance() == null) {
+				return null;
+			} else {
+				return mc;
+			}
+		}
+	}
 
-		MappingDocument doc = entry.get();
-		MappingInstance mi = doc.addInstance(bindings);
+	public MappingContainer getContainer(UserPrincipal currentUser, String mappingId) {
+		return getContainer(currentUser, mappingId, null);
+	}			
 
-		mappingsRepository.save(doc);
-
-		return mi;
+	@Override
+	public MappingContainer getContainer(UserPrincipal currentUser, ObjectIdentifier objId) {
+		MappingObjectIdentifier moi = (MappingObjectIdentifier)objId;
+		
+		return getContainer(currentUser, moi.getId(), moi.getInstanceId());
 	}
 	
-	public boolean executeMapping(UserPrincipal currentUser, String id, String instanceId, ApplicationEventPublisher applicationEventPublisher) {
-
-		Optional<MappingDocument> mappingOpt = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
-
-		if (!mappingOpt.isPresent()) {
-			return false;
+	public MappingContainer getContainer(UserPrincipal currentUser, ObjectId mappingId, ObjectId mappingInstanceId) {
+		return getContainer(currentUser, mappingId.toString(), mappingInstanceId != null ? mappingInstanceId.toString() : null);
+	}
+	
+	public MappingContainer getContainer(UserPrincipal currentUser, String mappingId, String mappingInstanceId) {
+		MappingContainer mc = new MappingContainer(currentUser, mappingId, mappingInstanceId);
+//		System.out.println(">> " + mc.mappingDocument + " " + mc.getDataset());
+		if (mappingInstanceId == null) {
+			if (mc.mappingDocument == null || mc.getDataset() == null) {
+				return null;
+			} else {
+				return mc;
+			}
+		} else {
+			if (mc.mappingDocument == null || mc.getDataset() == null || mc.getMappingInstance() == null) {
+				return null;
+			} else {
+				return mc;
+			}
 		}
+	}
 
-		MappingDocument doc = mappingOpt.get();
-		
-		Optional<Dataset> datasetOpt = datasetRepository.findByIdAndUserId(doc.getDatasetId(), new ObjectId(currentUser.getId()));
+	public MappingContainer getContainer(UserPrincipal currentUser, Dataset dataset, MappingDocument mappingDocument, MappingInstance mappingInstance) {
+		MappingContainer mc = new MappingContainer(currentUser, dataset, mappingDocument, mappingInstance);
+		if (mc.mappingDocument == null || mc.getDataset() == null) {
+			return null;
+		} else {
+			return mc;
+		}		
+	}
 
-		if (!datasetOpt.isPresent()) {
-			return false;
-		}
+	@Override
+	@Async("mappingExecutor")
+	public ListenableFuture<Date> execute(TaskDescription tdescr, WebSocketService wsService) throws TaskFailureException {
+		ExecuteMonitor em = (ExecuteMonitor)tdescr.getMonitor();
+
+		MappingContainer mc = (MappingContainer)tdescr.getContainer();
 		
+		mc.load(); // to keep updated data
+
+		Dataset dataset = mc.getDataset();
+		UserPrincipal currentUser = mc.getCurrentUser();
+
+		MappingDocument doc = mc.getMappingDocument();
+		MappingInstance mi;
+		
+		// should be moved within try: Message is not send to monitor !!!!
 		for (DependencyBinding db : doc.getDependencies()) {
 			for(ObjectId dependecyId : db.getValue()) {
 				Optional<MappingDocument> dmappingOpt = mappingsRepository.findByIdAndUserId(dependecyId, new ObjectId(currentUser.getId()));
 				if (!dmappingOpt.isPresent() || !dmappingOpt.get().isExecuted(fileSystemConfiguration.getId())) {
-					return false;
+//					return new AsyncResult<>(false);
+					throw new TaskFailureException(new Exception("Mapping dependecies are not executed"), new Date());
 				}	
 			}
 		}
-
-		Dataset dataset = datasetOpt.get();
-
-		MappingInstance mi = getMappingInstance(doc, instanceId);
-
-		ExecuteState es = mi.getExecuteState(fileSystemConfiguration.getId());
-
-		String datasetFolder = fileSystemConfiguration.getUserDataFolder(currentUser) + mappingsFolder + dataset.getUuid() + "/";
 		
-		// Clearing old files
-		clearExecution(currentUser, id, instanceId);
+		// Clearing old files. Should be done before updating execute start date
+		clearExecution(mc);
 		
-//		if (es.getExecuteState() == MappingState.EXECUTED) {
-//			boolean hi = !doc.getParameters().isEmpty();
-//			
-//			//for compatibility
-//			for (int i = 0; i < es.getExecuteShards(); i++) {
-//				(new File(fileSystemConfiguration.getUserDataFolder(currentUser) + mappingsFolder + doc.getUuid()
-//						+ (hi ? "_" + mi.getId().toString() : "") + (i == 0 ? "" : "_#" + i) + ".trig")).delete();
-//			}
-//			//new version
-//			if (new File(datasetFolder).exists()) {
-//				for (int i = 0; i < es.getExecuteShards(); i++) {
-//					(new File(datasetFolder + doc.getUuid()
-//							+ (hi ? "_" + mi.getId().toString() : "") + (i == 0 ? "" : "_#" + i) + ".trig")).delete();
-//				}
-//			}
-//		}
-
-		Date executeStart = new Date(System.currentTimeMillis());
-
-		es.setExecuteState(MappingState.EXECUTING);
-		es.setExecuteStartedAt(executeStart);
-		es.setExecuteShards(0);
-		es.setCount(0);
-
-		mappingsRepository.save(doc);
-
-		if (!new File(datasetFolder).exists()) {
-			new File(datasetFolder).mkdir();
+		//should save before staring execution!
+		try {
+			mc.save(imc -> {
+				MappingExecuteState ies = ((MappingContainer)imc).getMappingInstance().getExecuteState(fileSystemConfiguration.getId());
+				ies.startDo(em); // should be here so as to set start date
+			});
+		} catch (Exception ex) {
+			throw new TaskFailureException(ex, new Date());
 		}
-				
-		try (FileSystemOutputHandler outhandler = new FileSystemOutputHandler(
-				datasetFolder,
-				doc.getUuid() + (instanceId == null ? "" : "_" + mi.getId().toString()), shardSize)) {
+
+		doc = mc.getMappingDocument();
+		mi = mc.getMappingInstance();
+		
+		try (FileSystemRDFOutputHandler rdfOuthandler = folderService.createMappingExecutionRDFOutputHandler(mc, shardSize);
+				FileSystemPlainTextOutputHandler txtOuthandler = folderService.createMappingExecutionPlainTextOutputHandler(mc)) {
+
+			em.sendMessage(new ExecuteNotificationObject(mc));
 
 			Map<String, Object> fileMap = new HashMap<>();
 
-			File f = new File(fileSystemConfiguration.getUserDataFolder(currentUser) + uploadsFolder + doc.getUuid());
-			if (f.exists() && f.isDirectory()) {
-				for (File df : f.listFiles()) {
-					if (df.isFile()) {
-						fileMap.put(df.getName(), Paths.get(df.getAbsolutePath()));
-					}
+			if (doc.getDataFiles() != null) {
+				for (String s : doc.getDataFiles()) {
+					fileMap.put(s, folderService.getAttachmentPath(currentUser, doc, s));
 				}
 			}
-
-			// <-- for compatibility 
-			f = new File(fileSystemConfiguration.getUserDataFolder(currentUser) + uploadsFolder + id);
-			if (f.exists() && f.isDirectory()) {
-				for (File df : f.listFiles()) {
-					if (df.isFile()) {
-						fileMap.put(df.getName(), Paths.get(df.getAbsolutePath()));
-					}
+			if (mi.getDataFiles() != null) {
+				for (String s : mi.getDataFiles()) {
+					fileMap.put(s, folderService.getAttachmentPath(currentUser, doc, mi, s));
 				}
 			}
-			// for compatibility -->
 			
 			Map<String, Object> params = new HashMap<>();
 			if (!fileMap.isEmpty()) {
@@ -640,12 +1072,13 @@ public class MappingsService {
 				org.apache.jena.query.Dataset paramDataset = DatasetFactory.create();
 				logger.info("Creating tmp dataset " + db.getName());
 
-				for (ObjectId dependecyId : db.getValue()) {
-					Optional<MappingDocument> dmappingOpt = mappingsRepository.findByIdAndUserId(dependecyId, new ObjectId(currentUser.getId()));
-					if (!dmappingOpt.isPresent() || !dmappingOpt.get().isExecuted(fileSystemConfiguration.getId())) {
-						return false;
-					}	
-				}
+				// has been checked above
+//				for (ObjectId dependecyId : db.getValue()) {
+//					Optional<MappingDocument> dmappingOpt = mappingsRepository.findByIdAndUserId(dependecyId, new ObjectId(currentUser.getId()));
+//					if (!dmappingOpt.isPresent() || !dmappingOpt.get().isExecuted(fileSystemConfiguration.getId())) {
+//						return new AsyncResult<>(false);
+//					}	
+//				}
 				
 				executionResultsToModel(paramDataset, currentUser, db.getValue());
 				
@@ -653,87 +1086,138 @@ public class MappingsService {
 				
 				execParams.put(db.getName(), paramDataset);
 			}
-
-//			Executor exec = new Executor(ts, tempFolder != null && tempFolder.length() > 0 ? fileSystemConfiguration.getUserDataFolder(currentUser) + tempFolder: null, safeExecute);
-			Executor exec = new Executor(outhandler, safeExecute);
 			
-			File df = new File(fileSystemConfiguration.getUserDataFolder(currentUser) + extractTempFolder);
-			if (!df.exists()) {
-				logger.info("Created tmp folder " + fileSystemConfiguration.getUserDataFolder(currentUser) + extractTempFolder);
-				df.mkdir();
-			}
-				
-			exec.configureFileExtraction(extractMinSize, fileSystemConfiguration.getUserDataFolder(currentUser) + extractTempFolder, 0);
-
-			try (ExecuteMonitor em = new ExecuteMonitor("mapping", id, instanceId, applicationEventPublisher)) {
+			Executor exec = new Executor(rdfOuthandler, txtOuthandler, safeExecute);
+			
+			folderService.checkCreateExtractTempFolder(currentUser);
+			
+			try {
 				exec.setMonitor(em);
 
-				D2RMLModel d2rml = new SerializationTransformation().XtoD2RMLModel(doc.getD2RML(), params);
+				String baseUri = resourceVocabulary.getMappingAsResource(doc.getUuid()).toString(); 
 
-				SSEController.send("mapping", applicationEventPublisher, this, new ExecuteNotificationObject(id,
-						instanceId, ExecutionInfo.createStructure(d2rml), executeStart));
+				D2RMLModel d2rml;
+				if (doc.getFileContents() == null)  {
+					d2rml = new SerializationTransformation().XtoD2RMLModel(doc.getD2RML(), baseUri, params); // legacy for old json d2rml;
+				} else {
+					d2rml = d2rmlService.prepare(doc, mc.getDataset(), baseUri, params);
+				}
+				
+				exec.configureFileExtraction(extractMinSize, folderService.getExtractTempFolder(currentUser), d2rml.usesCaches() ? restCacheSize : 0);
 
-				logger.info("Mapping started -- id: " + id + (instanceId != null ? ("_" + instanceId) : ""));
+				em.createStructure(d2rml);
+				
+				logger.info("Mapping started -- id: " + mc.idsToString());
+
+				em.sendMessage(new ExecuteNotificationObject(mc));
 
 				exec.execute(d2rml, execParams);
+				
+				em.complete();
+				
+				mc.save(imc -> {
+					MappingExecuteState ies = ((MappingContainer)imc).getMappingInstance().getExecuteState(fileSystemConfiguration.getId());
 
-				Date executeFinish = new Date(System.currentTimeMillis());
+					ies.completeDo(em);
+					ies.setExecuteShards(rdfOuthandler.getShards());
+					ies.setSparqlExecuteShards(txtOuthandler.getShards());
+					ies.setCount(rdfOuthandler.getTotalItems());
+					ies.setSparqlCount(txtOuthandler.getTotalItems());
+					ies.setD2rmlExecution(((ExecuteNotificationObject)em.lastSentNotification()).getD2rmlExecution());
+				});
+				
+				logger.info("Mapping executed -- id: " + mc.idsToString() + ", shards: " + rdfOuthandler.getShards());
 
-				es.setExecuteState(MappingState.EXECUTED);
-				es.setExecuteCompletedAt(executeFinish);
-				es.setExecuteShards(outhandler.getShards());
-				es.setCount(outhandler.getTotalItems());
-
-				mappingsRepository.save(doc);
-
-				SSEController.send("mapping", applicationEventPublisher, this,
-						new NotificationObject("execute", MappingState.EXECUTED.toString(), id, instanceId,
-								executeStart, executeFinish, outhandler.getTotalItems()));
-
-				logger.info("Mapping executed -- id: " + id + (instanceId != null ? ("_" + instanceId) : "")
-						+ ", shards: " + outhandler.getShards());
+				em.sendMessage(new ExecuteNotificationObject(mc));
 
 				try {
-					zipExecution(datasetFolder, doc, instanceId, mi, outhandler.getShards());
+					zipExecution(mc, rdfOuthandler.getShards(), txtOuthandler.getShards());
 				} catch (Exception ex) {
 					ex.printStackTrace();
 					
-					logger.info("Zipping mapping execution failed -- id: " + id + (instanceId != null ? ("_" + instanceId) : ""));
+					logger.info("Zipping mapping execution failed -- id: " + mc.idsToString());
 				}
 				
-				return true;
+				return new AsyncResult<>(em.getCompletedAt());
 
 			} catch (Exception ex) {
-				ex.printStackTrace();
+//				ex.printStackTrace();
+				
+				logger.info("Mapping failed -- id: " + mc.idsToString());
 
-				logger.info("Mapping failed -- id: " + id + (instanceId != null ? ("_" + instanceId) : ""));
-
-				exec.getMonitor().currentConfigurationFailed();
-
+				em.currentConfigurationFailed(ex);
+				
 				throw ex;
+			} finally {
+				exec.finalizeFileExtraction();
 			}
+			
 		} catch (Exception ex) {
 			ex.printStackTrace();
-
-			es.setExecuteState(MappingState.EXECUTION_FAILED);
-
-			mappingsRepository.save(doc);
-
-			SSEController.send("mapping", applicationEventPublisher, this, new NotificationObject("execute",
-					MappingState.EXECUTION_FAILED.toString(), id, instanceId, null, null, ex.getMessage()));
-
-			return false;
+			
+			em.complete(ex);
+			
+			try {
+				mc.save(imc -> {
+					MappingExecuteState ies = ((MappingContainer)imc).getMappingInstance().getExecuteState(fileSystemConfiguration.getId());
+	
+					ies.failDo(em);
+					ies.setExecuteShards(0);
+					ies.setSparqlExecuteShards(0);
+					ies.setCount(0);
+					ies.setSparqlCount(0);
+					ies.setD2rmlExecution(((ExecuteNotificationObject)em.lastSentNotification()).getD2rmlExecution());
+				});
+				
+				em.sendMessage(new ExecuteNotificationObject(mc));
+				
+			} catch (Exception iex) {
+				throw new TaskFailureException(iex, new Date());
+			}
+			
+			throw new TaskFailureException(ex, em.getCompletedAt());
+			
+		} finally {
+			try {
+				if (em != null) {
+					em.close();
+				}
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
 		}
 
 	}
 
-	private void zipExecution(String datasetFolder, MappingDocument doc, String instanceId, MappingInstance mi, int shards) throws IOException {
+	// !!! DO NOT DELETE: Not used by not fully covered by generic method
+	private File zipExecution(MappingContainer mc, int trigShards, int txtShards) throws IOException {
+		return zipExecution(mc.getCurrentUser(), mc.getDataset(), mc.getMappingDocument(), mc.getMappingInstance(), mc.getExecuteState(), trigShards, txtShards);
+	}
+	
+	// !!! DO NOT DELETE: Not used by not fully covered by generic method
+	private File zipExecution(UserPrincipal currentUser, Dataset dataset, MappingDocument doc, MappingInstance mi, ExecuteState es, int trigShards, int txtShards) throws IOException {
 		
-		try (FileOutputStream fos = new FileOutputStream(datasetFolder + doc.getUuid() + (instanceId == null ? "": "_" + mi.getId().toString())  + ".zip");
+		File file = folderService.createMappingsExecutionZipFile(currentUser, dataset, doc, mi, es);
+		
+		try (FileOutputStream fos = new FileOutputStream(file);
 				ZipOutputStream zipOut = new ZipOutputStream(fos)) {
-	        for (int i = 0; i < shards; i++) {
-	            File fileToZip = new File(datasetFolder + doc.getUuid() + (instanceId == null ? "": "_" + mi.getId().toString()) + (i == 0 ? "" : "_#" + i) + ".trig");
-	            
+	        for (int i = 0; i < trigShards; i++) {
+	        	File fileToZip = folderService.getMappingExecutionTrigFile(currentUser, dataset, doc, mi, es, i);
+	            try (FileInputStream fis = new FileInputStream(fileToZip)) {
+		            ZipEntry zipEntry = new ZipEntry(fileToZip.getName());
+		            zipOut.putNextEntry(zipEntry);
+		 
+		            byte[] bytes = new byte[1024];
+		            int length;
+		            while((length = fis.read(bytes)) >= 0) {
+		                zipOut.write(bytes, 0, length);
+		            }
+	            }
+	        }
+	        
+	        //TODO: NOT HANDLED BY ServiceUtils. zip execution !!!!
+	        for (int i = 0; i < txtShards; i++) {
+	        	File fileToZip = folderService.getMappingExecutionTxtFile(currentUser, dataset, doc, mi, es, i);
 	            try (FileInputStream fis = new FileInputStream(fileToZip)) {
 		            ZipEntry zipEntry = new ZipEntry(fileToZip.getName());
 		            zipOut.putNextEntry(zipEntry);
@@ -746,6 +1230,8 @@ public class MappingsService {
 	            }
 	        }
         }
+		
+		return file;
 	}
 	
 	
@@ -753,8 +1239,8 @@ public class MappingsService {
 		if (ds == null) {
 			return;
 		}
+		
 		for (ObjectId id : ids) {
-
 			Optional<MappingDocument> mappingOpt = mappingsRepository.findByIdAndUserId(id, new ObjectId(currentUser.getId()));
 
 			if (!mappingOpt.isPresent()) {
@@ -762,118 +1248,63 @@ public class MappingsService {
 			}
 
 			MappingDocument doc = mappingOpt.get();
-			
+
 			Optional<Dataset> datasetOpt = datasetRepository.findByIdAndUserId(doc.getDatasetId(), new ObjectId(currentUser.getId()));
-	
+
 			if (!datasetOpt.isPresent()) {
 				continue;
 			}
 			
-			Dataset dataset	= datasetOpt.get();
-			
-			boolean hasParams = doc.getParameters().size() != 0;
+			Dataset dataset = datasetOpt.get();
 			
 			for (MappingInstance mi : doc.getInstances()) {
-				
-				ExecuteState  es = mi.getExecuteState(fileSystemConfiguration.getId());
+				MappingExecuteState  es = mi.getExecuteState(fileSystemConfiguration.getId());
 	
 				if (es.getExecuteState() == MappingState.EXECUTED) {
-	
-					String datasetFolder = fileSystemConfiguration.getUserDataFolder(currentUser) + mappingsFolder + dataset.getUuid() + "/";
-		
-			        for (int i = 0; i < es.getExecuteShards(); i++) {
-			            String file = "file:/" + datasetFolder + doc.getUuid() + (!hasParams ? "": "_" + mi.getId().toString()) + (i == 0 ? "" : "_#" + i) + ".trig";
-			        	logger.info("Loading file " + file);
-
-			            RDFDataMgr.read(ds, file, Lang.TRIG);
-			        }
-				}
-			}
-		}
-	}
-	
-	public String downloadMapping(UserPrincipal currentUser, String id) throws Exception {
-
-		Optional<MappingDocument> doc = mappingsRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
-
-		if (doc.isPresent()) {
-			Map<String, String> json = new SerializationTransformation().XtoJSONLD(doc.get().getD2RML());
-			
-			org.apache.jena.query.Dataset aDataset = DatasetFactory.create();
-			
-			try (StringReader sr = new StringReader(json.get(null))) {
-				RDFDataMgr.read(aDataset, sr, null, Lang.JSONLD);
-			}
-			
-			for (Map.Entry<String, String> entry : json.entrySet()) {
-				String graph = entry.getKey();
-				if (graph != null) {
-					Model model = ModelFactory.createDefaultModel();
-
-					try (StringReader sr = new StringReader(entry.getValue())) {
-						RDFDataMgr.read(model, sr, null, Lang.JSONLD);
-						
-						aDataset.addNamedModel(graph, model);
+					if (es.getExecuteShards() != null) {
+				        for (int i = 0; i < es.getExecuteShards(); i++) {
+				        	File file = folderService.getMappingExecutionTrigFile(currentUser, dataset, doc, mi, es, i);
+				        	if (file != null) {
+					        	logger.info("Loading file " + file);
+					            RDFDataMgr.read(ds, "file:/" + file.getAbsolutePath(), Lang.TRIG);
+				        	}
+				        }
 					}
 				}
 			}
-
-			StringWriter sw = new StringWriter();
-			
-			RDFDataMgr.write(sw, aDataset, RDFFormat.TRIG);
-
-			StringBuffer sw2 = new StringBuffer();
-//			System.out.println(sw.toString());
-			String str = sw.toString();
-			int newline = -1;
-			String spaces = "";
-			while ((newline = str.indexOf("\n")) != -1) {
-				String line = str.substring(0, newline);
-
-			    if (!line.startsWith(" ")) {
-			    	spaces = "";
-			    }
-		    		
-			    if (line.startsWith(" ") && spaces.length() == 0) {
-			    	spaces = "   ";
-			    }
-				str = str.substring(newline + 1);
-			    
-
-				
-			    int op = -1; 
-				while ((op = line.indexOf("[ ")) != -1) {
-					String part = line.substring(0, op + 2);
-					
-					sw2.append(spaces + part.replaceAll("^ +", "") + "\n");
-					
-					spaces += "   ";
-
-					line = line.substring(op + 2).replaceAll("^ +", "");
-					
-				}
-				
-				int cp = -1;
-				if ((cp = line.indexOf(" ] ;")) != -1) {
-					spaces = spaces.substring(0, spaces.length() - 3);
-					sw2.append(spaces + line.replaceAll("^ +", "") + "\n");
-				} else if ((cp = line.indexOf(" ]")) != -1) {
-					sw2.append(spaces + line.substring(0, cp + 1).replaceAll("^ +", "") + "\n");
-					spaces = spaces.substring(0, spaces.length() - 3);
-					sw2.append(spaces + line.substring(cp + 1) + "\n");
-				} else {
-					sw2.append(spaces + line.replaceAll("^ +", "") + "\n");
-				}
-				
-			}
-			sw2.append(str);
-//			System.out.println(sw2.toString());
-			
-			return sw2.toString();
-
-		} else {
-			return null;
 		}
 	}
+	
+	public MappingDocument failExecution(MappingContainer mc) {			
+		MappingDocument mdoc = mc.getMappingDocument();
+		MappingInstance mi = mc.getMappingInstance();
+		
+		MappingExecuteState es = mi.checkExecuteState(mc.getContainerFileSystemConfiguration().getId());
+		if (es != null) {
+			es.setExecuteState(MappingState.EXECUTION_FAILED);
+			es.setExecuteCompletedAt(new Date());
+			es.setMessage(new NotificationMessage(MessageType.ERROR, "Unknown error."));
+			mappingsRepository.save(mdoc);
+		}
+		
+		return mdoc;
+	}
 
+
+//	public void failExecution(String id, String instanceId, Throwable ex, Date date) {
+//		MappingDocument doc = mappingsRepository.findById(id).get();
+//		MappingInstance mi = this.findMappingInstance(doc, instanceId);
+//		
+//		MappingExecuteState es = mi.checkExecuteState(fileSystemConfiguration.getId());
+//		
+//		if (es != null) {
+//			es.setExecuteState(MappingState.EXECUTION_FAILED);
+//			es.setExecuteCompletedAt(date);
+//			if (ex != null) {
+//				es.setMessage(new NotificationMessage(MessageType.ERROR, ex.getCause() != null ? ex.getCause().getMessage() : ex.getMessage()));
+//			}
+//	
+//			mappingsRepository.save(doc);
+//		}
+//	}
 }

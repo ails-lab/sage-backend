@@ -11,18 +11,15 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 
 import edu.ntua.isci.ac.d2rml.model.Utils;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public class AnnotationEditValue {
 	
-	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private String iri;
 
-	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private String lexicalForm;
 
-	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private String language;
 
-	@JsonInclude(JsonInclude.Include.NON_NULL)
 	private String datatype;
 	
 	public AnnotationEditValue() {

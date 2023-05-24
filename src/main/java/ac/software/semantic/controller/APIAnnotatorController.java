@@ -1,62 +1,71 @@
 package ac.software.semantic.controller;
 
-
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.Collection;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Map.Entry;
 import java.util.stream.Collectors;
 
-import ac.software.semantic.payload.*;
 import io.swagger.v3.oas.annotations.Parameter;
 import org.apache.jena.rdf.model.Resource;
 import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.core.env.Environment;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter.SseEventBuilder;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.fasterxml.jackson.databind.util.StdDateFormat;
 
+import ac.software.semantic.config.ConfigurationContainer;
 import ac.software.semantic.controller.APIAnnotationEditGroupController.AnnotationValidationRequest;
+import ac.software.semantic.controller.utils.APIUtils;
 import ac.software.semantic.model.AnnotationEditGroup;
 import ac.software.semantic.model.AnnotatorDocument;
 import ac.software.semantic.model.DataService;
 import ac.software.semantic.model.Database;
-import ac.software.semantic.model.DataServiceParameter;
-import ac.software.semantic.model.DatasetState;
-import ac.software.semantic.model.NotificationObject;
-import ac.software.semantic.model.VirtuosoConfiguration;
+import ac.software.semantic.model.Dataset;
+import ac.software.semantic.model.PathElement;
+import ac.software.semantic.model.ProcessStateContainer;
+import ac.software.semantic.model.TaskDescription;
+import ac.software.semantic.model.TripleStoreConfiguration;
 import ac.software.semantic.model.DataService.DataServiceType;
+import ac.software.semantic.model.constants.AnnotatorPrepareStatus;
+import ac.software.semantic.model.constants.TaskType;
+import ac.software.semantic.payload.APIResponse;
+import ac.software.semantic.payload.AnnotatorDocumentResponse;
+import ac.software.semantic.payload.CreateAnnotatorRequest;
+import ac.software.semantic.payload.DataServiceResponse;
+import ac.software.semantic.payload.UpdateAnnotatorRequest;
+import ac.software.semantic.payload.ValueAnnotation;
+import ac.software.semantic.payload.ValueResponseContainer;
 import ac.software.semantic.repository.AnnotationEditGroupRepository;
 import ac.software.semantic.repository.AnnotatorDocumentRepository;
 import ac.software.semantic.repository.DataServiceRepository;
+import ac.software.semantic.repository.DatasetRepository;
 import ac.software.semantic.security.CurrentUser;
 import ac.software.semantic.security.UserPrincipal;
 import ac.software.semantic.service.AnnotatorService;
+import ac.software.semantic.service.AnnotatorService.AnnotatorContainer;
 import ac.software.semantic.service.ModelMapper;
-import edu.ntua.isci.ac.lod.vocabularies.sema.SEMAVocabulary;
+import ac.software.semantic.service.SimpleObjectIdentifier;
+import ac.software.semantic.service.TaskConflictException;
+import ac.software.semantic.service.TaskService;
+import ac.software.semantic.service.TaskSpecification;
+import ac.software.semantic.vocs.SEMRVocabulary;
+
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 @Tag(name = "Annotator API")
@@ -68,9 +77,6 @@ public class APIAnnotatorController {
 	@Autowired
     private AnnotatorService annotatorService;
 	
-    @Autowired
-    private ApplicationEventPublisher applicationEventPublisher;
-
 	@Autowired
 	private ModelMapper modelMapper;
 	
@@ -79,6 +85,22 @@ public class APIAnnotatorController {
 
 	@Autowired
 	private DataServiceRepository dataServiceRepository;
+
+	@Autowired
+	DatasetRepository datasetRepository;
+	
+	@Autowired
+	private SEMRVocabulary resourceVocabulary;
+	
+	@Autowired
+	private TaskService taskService;
+
+	@Autowired
+	AnnotatorDocumentRepository annotatorRepository;
+
+	@Autowired
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
 
     @Autowired
     @Qualifier("database")
@@ -89,11 +111,24 @@ public class APIAnnotatorController {
     private Map<Resource, List<String>> functions;
     
     @Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfigurations;
-    
+    @Qualifier("preprocess-operations")
+    private Map<Resource, List<String>> operations;
+        
+	@Autowired
+	private APIUtils apiUtils;
+
 	@GetMapping(value = "/services")
 	public ResponseEntity<?> services(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser)  {
+		List<DataService> services = dataServiceRepository.findByDatabaseIdAndType(database.getId(), DataServiceType.ANNOTATOR);
+        List<DataServiceResponse> response = services.stream()
+        		.map(doc -> modelMapper.dataService2DataServiceResponse(doc))
+        		.collect(Collectors.toList());
+
+		return ResponseEntity.ok(response);
+	}
+	
+	@GetMapping(value = "/vocabularies")
+	public ResponseEntity<?> vocabularies(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser)  {
 		List<DataService> services = dataServiceRepository.findByDatabaseIdAndType(database.getId(), DataServiceType.ANNOTATOR);
         List<DataServiceResponse> response = services.stream()
         		.map(doc -> modelMapper.dataService2DataServiceResponse(doc))
@@ -107,7 +142,7 @@ public class APIAnnotatorController {
 		
 		ObjectMapper mapper = new ObjectMapper();
 
-		ArrayNode array = mapper.createArrayNode();
+		ArrayNode farray = mapper.createArrayNode();
 		for (Entry<Resource, List<String>> entry : functions.entrySet()) {
 			ObjectNode object = mapper.createObjectNode();
 			object.put("uri", entry.getKey().toString());
@@ -123,60 +158,97 @@ public class APIAnnotatorController {
 				params.add(p);
 			}
 			object.put("parameters", params);
-			array.add(object);
+			farray.add(object);
 		}
 		
-		return ResponseEntity.ok(array);
+		ArrayNode oarray = mapper.createArrayNode();
+		for (Entry<Resource, List<String>> entry : operations.entrySet()) {
+			ObjectNode object = mapper.createObjectNode();
+			object.put("uri", entry.getKey().toString());
+			
+			List<String> ps = entry.getValue();
+			if (ps.size() == 0) {
+				continue;
+			}
+			
+			ArrayNode params = mapper.createArrayNode();
+			
+			for (String p : entry.getValue()) {
+				params.add(p);
+			}
+			object.put("parameters", params);
+			oarray.add(object);
+		}
+
+		ObjectNode object = mapper.createObjectNode();
+		object.put("functions", farray);
+		object.put("operations", oarray);
+		
+		return ResponseEntity.ok(object);
 	}
 	
 	@PostMapping(value = "/create")
-//	public ResponseEntity<?> create(@CurrentUser UserPrincipal currentUser, @RequestParam("datasetUri") String datasetUri, @RequestParam("onProperty") List<String> onProperty,  @RequestParam("asProperty") String asProperty, @RequestParam("annotator") String annotator, @RequestParam("thesaurus") Optional<String> thesaurus, @RequestBody List<DataServiceParameterValue> parameters)  {
 	public ResponseEntity<?> create(@CurrentUser UserPrincipal currentUser, @RequestBody CreateAnnotatorRequest req)  {
 
-		AnnotatorDocument adoc = annotatorService.createAnnotator(currentUser, req.getDatasetUri(), req.getOnProperty(), req.getAsProperty(), req.getAnnotator(), req.getThesaurus(), req.getParameters(), req.getPreprocess(), req.getVariant());
+		AnnotatorDocument adoc = annotatorService.createAnnotator(currentUser, req.getDatasetUri(), req.getOnPath(), req.getAsProperty(), req.getAnnotator(), req.getThesaurus(), req.getParameters(), req.getPreprocess(), req.getVariant(), req.getDefaultTarget());
 		
-		AnnotationEditGroup aeg = annotationEditGroupRepository.findByDatasetUuidAndOnPropertyAndAsPropertyAndUserId(SEMAVocabulary.getId(req.getDatasetUri()), req.getOnProperty(), req.getAsProperty(), new ObjectId(currentUser.getId())).get();
+		AnnotationEditGroup aeg = annotationEditGroupRepository.findByDatasetUuidAndOnPropertyAndAsPropertyAndUserId(resourceVocabulary.getUuidFromResourceUri(req.getDatasetUri()), PathElement.onPathElementListAsStringList(req.getOnPath()), req.getAsProperty(), new ObjectId(currentUser.getId())).get();
 		
-		return ResponseEntity.ok(modelMapper.annotator2AnnotatorResponse(virtuosoConfigurations.values(), adoc, aeg));
+		Optional<Dataset> datasetOpt = datasetRepository.findByUuid(adoc.getDatasetUuid());
+
+		if (!datasetOpt.isPresent()) {
+			return ResponseEntity.notFound().build();
+		}
+		
+		Dataset dataset = datasetOpt.get();
+		
+		ProcessStateContainer psv = dataset.getCurrentPublishState(virtuosoConfigurations.values());
+		
+		final TripleStoreConfiguration vc = psv != null ? psv.getTripleStoreConfiguration() : null;
+		
+		return ResponseEntity.ok(modelMapper.annotator2AnnotatorResponse(vc, adoc, aeg));
 		
 	} 
 	
-	@PostMapping(value = "/execute/{id}")
-	public ResponseEntity<?> execute(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+	@GetMapping("/get/{id}")
+	public ResponseEntity<?> get(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
 
+		AnnotatorContainer ac = null;
 		try {
-			AsyncUtils.supplyAsync(() -> annotatorService.executeAnnotator(currentUser, id, applicationEventPublisher));
-			
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
-			
-			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-
+	    	ac = annotatorService.getContainer(currentUser, new SimpleObjectIdentifier(id));
+	    	if (ac == null) {
+	    		return APIResponse.notFound(AnnotatorContainer.class);
+	    	} else {
+	    		return ResponseEntity.ok(ac.asResponse());
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return new ResponseEntity<>(APIResponse.FailureResponse("Bad request."), HttpStatus.BAD_REQUEST);
 		}
 		
 	}
+	
+	@GetMapping(value = "/get-all-by-user")
+	public ResponseEntity<?> getAllByUser(@CurrentUser UserPrincipal currentUser, @RequestParam("datasetUri") String datasetUri)  {
 
-	@GetMapping("/{id}")
-	public ResponseEntity<?> getAnnotator(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-
-		try {
-			Optional<AnnotatorDocumentResponse> annotatorOpt = annotatorService.getAnnotator(currentUser, id);
-			if (annotatorOpt.isPresent()) {
-				return ResponseEntity.ok(annotatorOpt.get());
-			}
-			else {
-				return ResponseEntity.status(HttpStatus.NOT_FOUND).body(null);
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-
-			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-		}
+		List<AnnotatorDocumentResponse> docs = annotatorService.getAnnotators(currentUser, datasetUri);
+		
+		return ResponseEntity.ok(docs);
+		
 	}
 
-	@PutMapping("{id}")
-	public ResponseEntity<?> updateAnnotator(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestBody UpdateAnnotatorRequest params)  {
+	@GetMapping(value = "/get-all")
+	public ResponseEntity<?> getAll(@CurrentUser UserPrincipal currentUser, @RequestParam("datasetUri") String datasetUri)  {
+
+		List<AnnotatorDocumentResponse> docs = annotatorService.getAnnotators(datasetUri);
+
+		return ResponseEntity.ok(docs);
+
+	}
+
+
+	@PutMapping("/update/{id}")
+	public ResponseEntity<?> update(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestBody UpdateAnnotatorRequest params)  {
 		try {
 			AnnotatorDocument updatedAnnotator = annotatorService.updateAnnotator(currentUser, id, params);
 			if (updatedAnnotator != null) {
@@ -193,119 +265,89 @@ public class APIAnnotatorController {
 
 	@DeleteMapping(value = "/delete/{id}",
 			produces = "application/json")
-	public ResponseEntity<?> delete(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id) {
-
-		boolean deleted = annotatorService.deleteAnnotator(currentUser, id);
-
-		if (deleted) {
-			return ResponseEntity.ok(new ApiResponse(true, "Annotator deleted"));
-		} else {
-			return ResponseEntity.ok(new ApiResponse(false, "Current user is not owner of catalog"));
+	public ResponseEntity<?> delete(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id) {
+		
+		SimpleObjectIdentifier objId = new SimpleObjectIdentifier(id);
+		
+		synchronized (AnnotatorService.syncString(objId.toHexString())) {
+			AnnotatorContainer ac = null;
+			try {
+		    	ac = annotatorService.getContainer(currentUser, objId);
+		    	if (ac == null) {
+		    		return APIResponse.notFound(AnnotatorContainer.class);
+		    	} else if (ac.isPublished()) {
+		    		throw TaskConflictException.isPublished(ac);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.badRequest();
+			}
+			
+			try {
+				
+				List<TaskType> ct  = Arrays.asList(new TaskType[] { TaskType.EMBEDDER_EXECUTE, TaskType.EMBEDDER_PUBLISH, TaskType.EMBEDDER_UNPUBLISH, TaskType.EMBEDDER_REPUBLISH } ); 
+		    	
+				synchronized (ac.synchronizationString(ct)) {
+		    		taskService.checkIfActiveAnnotatorTask(ac, null, ct);
+		    		
+		    		ac.delete(); // what if this fails ?
+		    
+		    		return APIResponse.deleted(ac);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.serverError(ex);
+			}	   			
 		}
 	}
-    
-  @PostMapping(value = "/publish")
-	public ResponseEntity<?> publish(@CurrentUser UserPrincipal currentUser, @RequestParam("id") String ids)  {
-		
+	
+	@PostMapping(value = "/prepare/{id}")
+	public ResponseEntity<?> prepare(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+
+		AnnotatorContainer ac = null;
 		try {
-			
-			String[] idss = ids.split(",");
-			
-			AsyncUtils.supplyAsync(() -> annotatorService.publish(currentUser, idss))
-			   .exceptionally(ex -> { ex.printStackTrace(); return false; })
-			   .thenAccept(ok -> {
-				   for (String id : idss) {
-					   AnnotatorDocumentResponse doc = annotatorService.getAnnotator(currentUser, id).get();
-					   
-					   ObjectMapper mapper = new ObjectMapper();
-					   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-					   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-					    
-					   NotificationObject no = new NotificationObject("publish", DatasetState.PUBLISHED_PUBLIC.toString(), id, null, doc.getPublishStartedAt(), doc.getPublishCompletedAt());
-								
-						try {
-							SseEventBuilder sse = SseEmitter.event().name("annotator").data(mapper.writeValueAsBytes(no));
-						
-							applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-						} catch (JsonProcessingException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						}
-				   }
-			   });
-			
-//			System.out.println("PUBLISHING ACCEPTED");
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
-			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+	    	ac = annotatorService.getContainer(currentUser, new SimpleObjectIdentifier(id));
+	    	if (ac == null) {
+	    		return APIResponse.notFound(AnnotatorContainer.class);
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.badRequest();
 		}
-
-//		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-		
-	} 	
-	
-	@PostMapping(value = "/unpublish")
-	public ResponseEntity<?> unpublish(@CurrentUser UserPrincipal currentUser, @RequestParam("id") String ids)  {
-		
-		String[] idss = ids.split(",");
-		
-		try {		
-			AsyncUtils.supplyAsync(() -> annotatorService.unpublish(currentUser, idss))
-			   .exceptionally(ex -> { ex.printStackTrace(); return false; })
-			   .thenAccept(ok -> {
-				   for (String id : idss) {
-//					   AnnotatorResponse doc = annotatorService.getAnnotator(currentUser, id).get();
-	
-					   ObjectMapper mapper = new ObjectMapper();
-					   mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
-					   mapper.setDateFormat(new StdDateFormat().withColonInTimeZone(true));
-					    
-					   NotificationObject no = new NotificationObject("publish", DatasetState.UNPUBLISHED.toString(), id, null, null, null);
-								
-						try {
-							SseEventBuilder sse = SseEmitter.event().name("annotator").data(mapper.writeValueAsBytes(no));
-						
-							applicationEventPublisher.publishEvent(new SseApplicationEvent(this, sse));
-						} catch (JsonProcessingException e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						}
-				   }
-			   });
+    	
+		try {
+			AnnotatorPrepareStatus status = annotatorService.prepareAnnotator(ac, false);
 			
-//			System.out.println("PUBLISHING ACCEPTED");
-			return new ResponseEntity<>(HttpStatus.ACCEPTED);
-		} catch (Exception e) {
-			e.printStackTrace();
-			
-			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
-		}
-			
-		
-//		return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-		
-	} 	
-
-	@Autowired
-	AnnotatorDocumentRepository annotatorRepository;
+			if (status == AnnotatorPrepareStatus.PREPARED) {
+  				return new ResponseEntity<>(APIResponse.SuccessResponse("The annotator is ready."), HttpStatus.OK);
+			} else if (status == AnnotatorPrepareStatus.PREPARING) {
+				return new ResponseEntity<>(APIResponse.SuccessResponse("The annotator is being prepared."), HttpStatus.OK);
+			} else if (status == AnnotatorPrepareStatus.NOT_PREPARED) {
+				return new ResponseEntity<>(APIResponse.SuccessResponse("The annotator is not ready and not being prepared."), HttpStatus.OK);
+			} else {
+	    		return new ResponseEntity<>(APIResponse.FailureResponse("Unknown annotator status."), HttpStatus.CONFLICT);
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
+		}	    	
+	}
 	
     @GetMapping(value = "/preview/{id}", produces = "application/json")
-    public ResponseEntity<?> view(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam(value="page", defaultValue="1") int page, @RequestParam(value="mode", defaultValue="ALL") AnnotationValidationRequest mode)  {
-
-		Optional<AnnotatorDocument> doc = annotatorRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));
+    public ResponseEntity<?> view(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id, @RequestParam(value="page", defaultValue="1") int page, @RequestParam(value="mode", defaultValue="ALL") AnnotationValidationRequest mode)  {
 
 		try {
-	
-			if (doc.isPresent()) {
-				AnnotatorDocument adoc = doc.get();
-				org.apache.jena.query.Dataset rdfDataset = annotatorService.load(currentUser, adoc);
-				Collection<ValueAnnotation> res = annotatorService.view(currentUser, doc.get(), rdfDataset, page);
+			org.apache.jena.query.Dataset rdfDataset = annotatorService.load(currentUser, id);
+			
+			AnnotatorDocument doc = annotatorRepository.findByIdAndUserId(id, new ObjectId(currentUser.getId())).get();
 
-				return ResponseEntity.ok(res);
-			} else {
-				return new ResponseEntity<>(HttpStatus.NOT_FOUND);
-			}
+			ValueResponseContainer<ValueAnnotation> res = annotatorService.view(currentUser, doc, rdfDataset, page);
+
+			return ResponseEntity.ok(res);
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -314,74 +356,191 @@ public class APIAnnotatorController {
 		}			
     } 
     
-    @GetMapping(value = "/lastExecution/{id}",
-            produces = "text/plain")
-	public ResponseEntity<?> previewLastExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-	
-		try {
-			Optional<String> ttl = annotatorService.getLastExecution(currentUser, id);
-			if (ttl.isPresent()) {
-				return ResponseEntity.ok(ttl.get());
-			} else {
-				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-			return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-		}
-	
-	}
+	@PostMapping(value = "/execute/{id}")
+	public ResponseEntity<?> execute(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
 
-    
-    @GetMapping(value = "/downloadLastExecution/{id}")
-	public ResponseEntity<?> downloadLastExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-	
+		AnnotatorContainer ac = null;
 		try {
-			Optional<String> zip = annotatorService.downloadLastExecution(currentUser, id);
+	    	ac = annotatorService.getContainer(currentUser, new SimpleObjectIdentifier(id));
+	    	if (ac == null) {
+	    		return APIResponse.notFound(AnnotatorContainer.class);
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.badRequest();
+		}
+		
+		try {
+			AnnotatorPrepareStatus status = annotatorService.prepareAnnotator(ac, true);
 			
-			if (zip.isPresent()) {
-				String file = zip.get();
-				Path path = Paths.get(file);
-				File ffile = new File(file);
-		      	
-			    ByteArrayResource resource = new ByteArrayResource(Files.readAllBytes(path));
+			if (status == AnnotatorPrepareStatus.PREPARING) {
+				return new ResponseEntity<>(APIResponse.FailureResponse("The annotator is being prepared."), HttpStatus.CONFLICT);
+			} else if (status == AnnotatorPrepareStatus.NOT_PREPARED) {
+				return new ResponseEntity<>(APIResponse.FailureResponse("The annotator is not ready and not being prepared."), HttpStatus.CONFLICT);
+			} else if (status == AnnotatorPrepareStatus.UNKNOWN) {
+	    		return new ResponseEntity<>(APIResponse.FailureResponse("Unknown annotator status."), HttpStatus.CONFLICT);
+	    	}
+			
+			TaskDescription tdescr = TaskSpecification.getTaskSpecification(TaskType.ANNOTATOR_EXECUTE).createTask(ac);
 
-			    HttpHeaders headers = new HttpHeaders();
-			    headers.add(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, HttpHeaders.CONTENT_DISPOSITION);
-			    headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + ffile.getName());
-			    		
-			    return ResponseEntity.ok()
-			            .headers(headers)
-			            .contentLength(ffile.length())
-			            .contentType(MediaType.APPLICATION_OCTET_STREAM)
-			            .body(resource);
-
-			} else {
-				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-			}
-		} catch (Exception e) {
-			e.printStackTrace();
-			return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+	    	if (tdescr != null) {
+	    		taskService.call(tdescr);
+	    		return new ResponseEntity<>(APIResponse.SuccessResponse("The annotator has been scheduled for execution."), HttpStatus.ACCEPTED);
+	    	} else {
+	    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+	    	}
+	    	
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
 		}
-	}    
+		
+	}
 	
-	@GetMapping(value = "/getAllByUser")
-	public ResponseEntity<?> getAllByUser(@CurrentUser UserPrincipal currentUser, @RequestParam("datasetUri") String datasetUri)  {
+	@PostMapping(value = "/stop/{id}")
+	public ResponseEntity<?> stop(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
 
-		List<AnnotatorDocumentResponse> docs = annotatorService.getAnnotators(currentUser, datasetUri);
+		AnnotatorContainer ac = null;
+		try {
+	    	ac = annotatorService.getContainer(currentUser, new SimpleObjectIdentifier(id));
+	    	if (ac == null) {
+	    		return APIResponse.notFound(AnnotatorContainer.class);
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.badRequest();
+		}
+    	
+		try {
+	    	synchronized (ac.synchronizationString(TaskType.ANNOTATOR_EXECUTE)) {
+	    		TaskDescription td =  taskService.getActiveTask(ac, TaskType.ANNOTATOR_EXECUTE);
+	    		if (td != null) {
+	    			if (taskService.requestStop(td.getId())) {
+	    				return new ResponseEntity<>(APIResponse.SuccessResponse("The annotator is being stopped."), HttpStatus.ACCEPTED);
+	    			} else {
+	    				return new ResponseEntity<>(APIResponse.FailureResponse("The annotator could not be stopped."), HttpStatus.CONFLICT);
+	    			}
+	    		} else {
+	    			
+	    			AnnotatorDocument adoc = annotatorService.failExecution(ac);
+
+	    			return new ResponseEntity<>(APIResponse.SuccessResponse("The annotator is not being executed.", 
+	    					adoc != null ? ac.asResponse() : null),
+	    					HttpStatus.OK);
+	    		}
+	    	}
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			return APIResponse.serverError(ex);
+		}	    	
+	}
+	
+	@PostMapping(value = "/publish/{id}")
+	public ResponseEntity<APIResponse> publish(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
 		
-		return ResponseEntity.ok(docs);
+		SimpleObjectIdentifier objId = new SimpleObjectIdentifier(id);
 		
+		synchronized (AnnotatorService.syncString(objId.toHexString())) {
+			AnnotatorContainer ac = null;
+			try {
+		    	ac = annotatorService.getContainer(currentUser, objId);
+		    	if (ac == null) {
+		    		return APIResponse.notFound(AnnotatorContainer.class);
+		    	} else if (ac.isPublished()) {
+		    		throw TaskConflictException.alreadyPublished(ac);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.badRequest();
+			}
+		
+			try {
+				
+		    	TaskDescription tdescr = TaskSpecification.getTaskSpecification(TaskType.ANNOTATOR_PUBLISH).createTask(ac);
+				
+		    	if (tdescr != null) {
+		    		taskService.call(tdescr);
+		    		return APIResponse.acceptedToPublish(ac);
+		    	} else {
+		    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);			
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.serverError(ex);
+			}
+		}
+	} 		
+	
+   	@PostMapping(value = "/unpublish/{id}")
+	public ResponseEntity<APIResponse> unpublish(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+	
+   		SimpleObjectIdentifier objId = new SimpleObjectIdentifier(id);
+   		
+   		synchronized (AnnotatorService.syncString(objId.toHexString())) {
+			AnnotatorContainer ac = null;
+			try {
+		    	ac = annotatorService.getContainer(currentUser, objId);
+		    	if (ac == null) {
+		    		return APIResponse.notFound(AnnotatorContainer.class);
+		    	} else if (!ac.isPublished()) {
+		    		throw TaskConflictException.notPublished(ac);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.badRequest();
+			}
+			
+			try {
+				TaskDescription tdescr = TaskSpecification.getTaskSpecification(TaskType.ANNOTATOR_UNPUBLISH).createTask(ac);
+		
+		    	if (tdescr != null) {
+		    		taskService.call(tdescr);
+		    		return APIResponse.acceptedToUnpublish(ac);
+		    	} else {
+		    		return new ResponseEntity<>(APIResponse.FailureResponse("Server error."), HttpStatus.INTERNAL_SERVER_ERROR);
+		    	}
+			} catch (TaskConflictException ex) {
+				return APIResponse.conflict(ex);
+			} catch (Exception ex) {
+				ex.printStackTrace();
+				return APIResponse.serverError(ex);
+			}
+   		}
+   	}	
+    
+    @PostMapping(value = "/clear-execution/{id}")
+ 	public ResponseEntity<APIResponse> clearExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+    	return apiUtils.clearExecution(currentUser, new SimpleObjectIdentifier(id), annotatorService);
+ 	}	
+    
+    @GetMapping(value = "/preview-last-execution/{id}",
+                produces = "text/plain")
+	public ResponseEntity<?> previewLastExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+    	return apiUtils.previewLastExecution(currentUser, new SimpleObjectIdentifier(id), annotatorService);
+	}
+    
+    @GetMapping(value = "/preview-published-execution/{id}",
+                produces = "text/plain")
+	public ResponseEntity<?> previewPublishedExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+    	return apiUtils.previewPublishedExecution(currentUser, new SimpleObjectIdentifier(id), annotatorService);
 	}
 
-	@GetMapping(value = "/getAll")
-	public ResponseEntity<?> getAll(@CurrentUser UserPrincipal currentUser, @RequestParam("datasetUri") String datasetUri)  {
-
-		List<AnnotatorDocumentResponse> docs = annotatorService.getAnnotators(datasetUri);
-
-		return ResponseEntity.ok(docs);
-
-	}
+    @GetMapping(value = "/download-last-execution/{id}")
+	public ResponseEntity<StreamingResponseBody> downloadLastExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+    	return apiUtils.downloadLastExecution(currentUser, new SimpleObjectIdentifier(id), annotatorService);
+	}    
+    
+    @GetMapping(value = "/download-published-execution/{id}")
+	public ResponseEntity<StreamingResponseBody> downloadPublishedExecution(@CurrentUser UserPrincipal currentUser, @PathVariable("id") ObjectId id)  {
+       	return apiUtils.downloadPublishedExecution(currentUser, new SimpleObjectIdentifier(id), annotatorService);
+	}   
+	
 	
 	
 }

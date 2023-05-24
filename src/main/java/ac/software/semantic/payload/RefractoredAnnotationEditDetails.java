@@ -1,16 +1,23 @@
 package ac.software.semantic.payload;
 
-import ac.software.semantic.model.AnnotationEditType;
+import java.util.List;
+
 import org.springframework.data.annotation.Id;
+
+import ac.software.semantic.model.constants.AnnotationEditType;
 
 public class RefractoredAnnotationEditDetails {
     @Id
     private String id;
     private String annotationValue;
     private AnnotationEditType editType;
-    private int start;
-    private int end;
+    private Integer start;
+    private Integer end;
     private int count;
+    
+    private String target;
+    
+    private List<ValueAnnotationReference> references;
 
     public RefractoredAnnotationEditDetails() {
     }
@@ -39,19 +46,19 @@ public class RefractoredAnnotationEditDetails {
         this.editType = editType;
     }
 
-    public int getStart() {
+    public Integer getStart() {
         return start;
     }
 
-    public void setStart(int start) {
+    public void setStart(Integer start) {
         this.start = start;
     }
 
-    public int getEnd() {
+    public Integer getEnd() {
         return end;
     }
 
-    public void setEnd(int end) {
+    public void setEnd(Integer end) {
         this.end = end;
     }
 
@@ -62,4 +69,20 @@ public class RefractoredAnnotationEditDetails {
     public void setCount(int count) {
         this.count = count;
     }
+
+	public String getTarget() {
+		return target;
+	}
+
+	public void setTarget(String target) {
+		this.target = target;
+	}
+
+	public List<ValueAnnotationReference> getReferences() {
+		return references;
+	}
+
+	public void setReferences(List<ValueAnnotationReference> references) {
+		this.references = references;
+	}
 }

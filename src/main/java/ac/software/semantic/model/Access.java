@@ -7,6 +7,11 @@ import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
+
+import ac.software.semantic.model.constants.AccessType;
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @Document(collection = "Access")
 public class Access {
     //should we put creatorId;
@@ -16,6 +21,9 @@ public class Access {
     private ObjectId userId;
     private ObjectId collectionId;
     private String collectionUuid;
+    
+    private ObjectId campaignId;
+    
     private AccessType accessType;
 
     public Access() {}
@@ -79,4 +87,12 @@ public class Access {
     public void setAccessType(AccessType accessType) {
         this.accessType = accessType;
     }
+
+	public ObjectId getCampaignId() {
+		return campaignId;
+	}
+
+	public void setCampaignId(ObjectId campaignId) {
+		this.campaignId = campaignId;
+	}
 }

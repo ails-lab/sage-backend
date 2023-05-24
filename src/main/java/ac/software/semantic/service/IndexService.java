@@ -1,166 +1,471 @@
 package ac.software.semantic.service;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+import org.apache.http.HttpHost;
+import org.apache.jena.query.QueryExecution;
+import org.apache.jena.query.QueryExecutionFactory;
+import org.apache.jena.query.QueryFactory;
+import org.apache.jena.query.QuerySolution;
+import org.apache.jena.query.Syntax;
+import org.apache.jena.rdf.model.Literal;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.RDFNode;
+import org.apache.jena.rdf.model.Resource;
 import org.bson.types.ObjectId;
+import org.elasticsearch.action.admin.indices.delete.DeleteIndexRequest;
+import org.elasticsearch.action.bulk.BulkItemResponse;
+import org.elasticsearch.action.bulk.BulkRequest;
+import org.elasticsearch.action.bulk.BulkResponse;
+import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.support.master.AcknowledgedResponse;
+import org.elasticsearch.client.Request;
+import org.elasticsearch.client.RequestOptions;
+import org.elasticsearch.client.Response;
+import org.elasticsearch.client.RestClient;
+import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.client.indices.GetIndexRequest;
+import org.elasticsearch.client.indices.GetIndexResponse;
+import org.elasticsearch.common.xcontent.XContentBuilder;
+import org.elasticsearch.common.xcontent.XContentFactory;
+import org.elasticsearch.index.query.TermQueryBuilder;
+import org.elasticsearch.index.reindex.BulkByScrollResponse;
+import org.elasticsearch.index.reindex.DeleteByQueryRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import ac.software.semantic.config.ConfigurationContainer;
+import ac.software.semantic.model.Database;
 import ac.software.semantic.model.Dataset;
 import ac.software.semantic.model.ElasticConfiguration;
-import ac.software.semantic.model.IndexDocument;
-import ac.software.semantic.model.IndexingState;
-import ac.software.semantic.model.PublishState;
-import ac.software.semantic.model.VirtuosoConfiguration;
-import ac.software.semantic.payload.IndexDocumentResponse;
+import ac.software.semantic.model.EmbedderDocument;
+import ac.software.semantic.model.IndexStructure;
+import ac.software.semantic.model.TripleStoreConfiguration;
+import ac.software.semantic.model.constants.IndexingState;
+import ac.software.semantic.model.constants.RDFTermType;
+import ac.software.semantic.model.index.ClassIndexElement;
+import ac.software.semantic.model.index.IndexKeyMetadata;
 import ac.software.semantic.repository.DatasetRepository;
-import ac.software.semantic.repository.IndexRepository;
+//import ac.software.semantic.repository.IndexRepository;
+import ac.software.semantic.repository.IndexStructureRepository;
 import ac.software.semantic.security.UserPrincipal;
-
-import edu.ntua.isci.ac.lod.vocabularies.sema.SEMAVocabulary;
+import ac.software.semantic.service.SPARQLService.SPARQLStructure;
+import edu.ntua.isci.ac.common.db.rdf.VirtuosoSelectIterator;
+import ac.software.semantic.vocs.SEMAVocabulary;
+import ac.software.semantic.vocs.SEMRVocabulary;
 import edu.ntua.isci.ac.semaspace.index.Indexer;
-
 
 @Service
 public class IndexService {
 
-	@Autowired
-	private ModelMapper modelMapper;
+	private static int VIRTOSO_BULK_COUNT = 100;
+	
+//	@Autowired
+//	private ModelMapper modelMapper;
 	
 	@Autowired
-	IndexRepository indexRepository;
+	private SEMRVocabulary resourceVocabulary;
+	
+//	@Autowired
+//	IndexRepository indexRepository;
 
 	@Autowired
 	DatasetRepository datasetRepository;
 
-    @Autowired
-    @Qualifier("elastic-configuration")
-    private ElasticConfiguration elasticConfiguration;
+	@Autowired
+	IndexStructureRepository indexStructureRepository;
 
-    @Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfigurations;
-
-	public Optional<IndexDocumentResponse> getIndex(UserPrincipal currentUser, String uri) {
-		
-		String datasetUuid = SEMAVocabulary.getId(uri);
-		
-        Optional<IndexDocument> doc = indexRepository.findByDatasetUuidAndHostAndUserId(datasetUuid, elasticConfiguration.getIndexIp(), new ObjectId(currentUser.getId()));
-        if (doc.isPresent()) {
-        	return Optional.of(modelMapper.index2IndexResponse(doc.get()));
-        } else {
-        	return Optional.empty();
-        }
-    }
+	@Autowired
+	SPARQLService sparqlService;
 	
-	public IndexDocument createIndexDocument(UserPrincipal currentUser, String datasetUri, List<List<String>> onProperties) {
-		
-		String datasetUuid = SEMAVocabulary.getId(datasetUri);
-		
-		Optional<Dataset> ds = datasetRepository.findByUuid(datasetUuid);
-		if (ds.isPresent()) {
-			
-			String uuid = UUID.randomUUID().toString();
-		
-			IndexDocument d = new IndexDocument(new ObjectId(currentUser.getId()), ds.get().getId(), datasetUuid, uuid, onProperties, elasticConfiguration.getIndexIp());
-			
-			IndexDocument doc = indexRepository.save(d);
-			
-			return doc;
-		} else {
+    @Autowired
+    @Qualifier("elastic-configurations")
+    private ConfigurationContainer<ElasticConfiguration> elasticConfigurations;
+
+    @Autowired
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
+
+    @Autowired
+	@Qualifier("database")
+	private Database database;
+	
+	public IndexStructure createIndex(UserPrincipal currentUser, String indexIdentifier, ElasticConfiguration ec, List<ClassIndexElement> elements, List<IndexKeyMetadata> keysMetadata) {
+
+		Optional<IndexStructure> isOpt = indexStructureRepository.findByDatabaseIdAndIdentifier(database.getId(), indexIdentifier);
+		if (isOpt.isPresent()) {
 			return null;
 		}
+
+		String uuid = UUID.randomUUID().toString();
+
+		IndexStructure is = new IndexStructure();
+		is.setUserId(new ObjectId(currentUser.getId()));
+		is.setDatabaseId(database.getId());
+		is.setUuid(uuid);
+		is.setIdentifier(indexIdentifier);
+		is.setElements(elements);
+		is.setKeysMetadata(keysMetadata);
+		is.setUpdatedAt(new Date());
+		is.setElasticConfigurationId(ec.getId());
+
+		is = indexStructureRepository.save(is);
+
+		return is;
 	}
 	
-	public boolean indexCollection(UserPrincipal currentUser, String uri, List<List<String>> paths) throws IOException {
+//	public Optional<IndexDocumentResponse> getIndex(UserPrincipal currentUser, String uri) {
+//		
+//		String datasetUuid = SEMAVocabulary.getId(uri);
+//		
+//        Optional<IndexDocument> doc = indexRepository.findByDatasetUuidAndHostAndUserId(datasetUuid, elasticConfiguration.getIndexIp(), new ObjectId(currentUser.getId()));
+//        if (doc.isPresent()) {
+//        	return Optional.of(modelMapper.index2IndexResponse(doc.get()));
+//        } else {
+//        	return Optional.empty();
+//        }
+//    }
+    
+	public List<IndexStructure> getIndices() {
 		
-		String datasetUuid = SEMAVocabulary.getId(uri);
-		Optional<Dataset> dopt = datasetRepository.findByUuidAndUserId(datasetUuid, new ObjectId(currentUser.getId()));
- 			
-		if (!dopt.isPresent()) {
-			return false;
+	    return indexStructureRepository.findByDatabaseId(database.getId());
+	}
+	
+//	public IndexDocument createIndexDocument(UserPrincipal currentUser, String datasetUri) {
+//		
+//		String datasetUuid = resourceVocabulary.getUuidFromResourceUri(datasetUri);
+//		
+//		Optional<Dataset> ds = datasetRepository.findByUuid(datasetUuid);
+//		if (ds.isPresent()) {
+//			
+//			String uuid = UUID.randomUUID().toString();
+//		
+//			IndexDocument d = new IndexDocument();
+//			d.setUserId(new ObjectId(currentUser.getId()));
+//			d.setDatasetId(ds.get().getId());
+//			d.setDatasetUuid(datasetUuid);
+//			d.setUuid(uuid);
+//			
+//			IndexDocument doc = indexRepository.save(d);
+//			
+//			return doc;
+//		} else {
+//			return null;
+//		}
+//	}
+	
+	
+//	public boolean indexCollectionOld(UserPrincipal currentUser, String uri) throws IOException {
+//		IndexDocument doc = createIndexDocument(currentUser, uri);
+//		
+//		doc.setIndexState(IndexingState.INDEXING);
+//		doc.setIndexStartedAt(new Date(System.currentTimeMillis()));
+//		indexRepository.save(doc);
+//		
+//		ElasticConfiguration ec = elasticConfigurations.values().iterator().next(); // legacy
+//
+//		Indexer indexer = new Indexer(virtuosoConfigurations.values().iterator().next().getSparqlEndpoint());
+//		
+//		indexer.indexCollection(ec.getIndexIp(), ec.getIndexDataName(), uri, null);
+//		
+//		doc.setIndexState(IndexingState.INDEXED);
+//		doc.setIndexCompletedAt(new Date(System.currentTimeMillis()));
+//		indexRepository.save(doc);
+//		
+//		return true;
+//	}
+	
+//	public boolean unindexCollectionOld(UserPrincipal currentUser, String uri) throws IOException {
+//		String datasetUuid = resourceVocabulary.getUuidFromResourceUri(uri);
+//		
+//		Optional<Dataset> dopt = datasetRepository.findByUuidAndUserId(datasetUuid, new ObjectId(currentUser.getId()));
+//			
+//		if (!dopt.isPresent()) {
+//			return false;
+//		}
+//			
+//		Dataset dataset = dopt.get();
+//	
+//		PublishState ps = null;
+//		Indexer indexer = null;
+//	
+//		for (TripleStoreConfiguration vc : virtuosoConfigurations.values()) {
+//			ps = dataset.checkPublishState(vc.getId());
+//			if (ps != null) {
+//				indexer = new Indexer(vc.getSparqlEndpoint());
+//				break;
+//			}
+//		}
+//		
+//		if (indexer == null) {
+//			return false;
+//		}
+//	
+//		ElasticConfiguration ec = elasticConfigurations.values().iterator().next(); // legacy
+//		
+//		IndexDocument doc = indexRepository.findByDatasetUuidAndHostAndUserId(datasetUuid, ec.getIndexIp(), new ObjectId(currentUser.getId())).get();
+//	
+//		doc.setIndexState(IndexingState.UNINDEXING);
+//		doc.setIndexStartedAt(new Date(System.currentTimeMillis()));
+//		indexRepository.save(doc);
+//	
+//		indexer.unindexCollection(ec.getIndexIp(), ec.getIndexDataName(), uri);
+//	
+//		indexRepository.delete(doc);
+//			
+//		return true;
+//		
+//	}	
+	
+	
+	public void index(Dataset dataset, ElasticConfiguration ec, TripleStoreConfiguration vc, IndexStructure idxStruct) throws IOException {
+		
+		try (RestHighLevelClient client = new RestHighLevelClient(RestClient.builder(new HttpHost(ec.getIndexIp(), ec.getIndexPort(), "http")))) {
+
+			String graph = resourceVocabulary.getDatasetAsResource(dataset.getUuid()).toString();
+
+			for (ClassIndexElement ie : idxStruct.getElements()) {
+				BulkRequestProcessor brp = new BulkRequestProcessor(client);
+
+				String sparql = ie.topElementsListSPARQL(graph); 
+				SPARQLStructure ss = sparqlService.toSPARQL(ie);
+				
+//				List<List<Resource>> paths = ss.getPaths();
+//				List<String> keys = new ArrayList<>();
+//				for (List<Resource> list : paths) {
+//					keys.add(idxStruct.getPathKey(list));
+//				}
+				List<String> keys = new ArrayList<>(ss.getKeys());
+
+				Map<Integer, IndexKeyMetadata> keyMap = idxStruct.getKeyMetadataMap();
+
+				System.out.println(keys);
+				System.out.println(sparql);
+				System.out.println(QueryFactory.create(sparql));
+	            try (VirtuosoSelectIterator rs = new VirtuosoSelectIterator(vc.getSparqlEndpoint(), sparql)) {
+	                
+	                while (rs.hasNext()) {
+	                	int count = 0;
+	                	
+	                	List<Resource> subjects = new ArrayList<>();
+	                	while (rs.hasNext() && count < VIRTOSO_BULK_COUNT) {
+	                		QuerySolution sol = rs.next();
+	                		count++;
+	                		
+	                		Resource subject = sol.getResource("s");
+	                		subjects.add(subject);
+	                	}
+	                    
+
+	            		String subjectSparql = ss.construct("FROM <" + graph + ">", subjects);
+	            		
+//	            		System.out.println(QueryFactory.create(subjectSparql, Syntax.syntaxARQ));
+
+	                    try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(subjectSparql, Syntax.syntaxARQ))) {
+	                    	Model model = qe.execConstruct();
+
+	                    	for (Resource subject : subjects) {
+								brp.addRequest(new IndexRequest(idxStruct.getLocalIdentifier(database, dataset)).source(buildItem(graph, subject, model, ss, keys, keyMap)));
+	                    	}
+	                    }
+					}
+								
+				}
+
+	            brp.flush();
+			}
 		}
+	}	
+
+	public void unindex(Dataset dataset, ElasticConfiguration ec, String graph) throws IOException {
+		
+		try(RestHighLevelClient client = new RestHighLevelClient(RestClient.builder(new HttpHost(ec.getIndexIp(), ec.getIndexPort(), "http")))) {
+		   
+			String id = IndexStructure.getLocalIdentifier(database, dataset);
+
+			DeleteByQueryRequest deleteRequest = new DeleteByQueryRequest(id);
+			deleteRequest.setQuery(new TermQueryBuilder("graph", graph));
 			
-		Dataset dataset = dopt.get();
+			BulkByScrollResponse bulkResponse = client.deleteByQuery(deleteRequest, RequestOptions.DEFAULT);
+			
+			
+			Response resp = client.getLowLevelClient().performRequest(new Request("GET", id + "/_stats"));
+			JsonNode body =  new ObjectMapper().readTree(resp.getEntity().getContent());
+			int size = body.get("indices").get(id).get("primaries").get("docs").get("count").asInt();
 
-		PublishState ps = null;
-		Indexer indexer = null;
+			if (size == 0) {
+				DeleteIndexRequest request = new DeleteIndexRequest(id);
+				AcknowledgedResponse deleteIndexResponse = client.indices().delete(request, RequestOptions.DEFAULT);
+			}
+			
+		}
+	}	
 
-		for (VirtuosoConfiguration vc : virtuosoConfigurations.values()) {
-			ps = dataset.checkPublishState(vc.getId());
-			if (ps != null) {
-				indexer = new Indexer(vc.getSparqlEndpoint());
-				break;
+	private class BulkRequestProcessor {
+		private BulkRequest bulkRequest;
+		private int bulkCount = 0;
+		
+		private RestHighLevelClient client;
+		
+		public BulkRequestProcessor(RestHighLevelClient client)	{
+			this.client = client;
+
+			bulkRequest = new BulkRequest();
+			bulkCount = 0;
+		}
+		
+		public void addRequest(IndexRequest ir) throws IOException {
+			bulkRequest.add(ir);
+			bulkCount++;
+			
+//			if (bulkCount % 1000 == 0) {
+//				System.out.println(bulkCount);
+//			}
+			
+			if (bulkCount % 10000 == 0) {
+				
+				BulkResponse bulkResponse = client.bulk(bulkRequest, RequestOptions.DEFAULT);
+				
+				if (bulkResponse.hasFailures()) { 
+					for (BulkItemResponse bulkItemResponse : bulkResponse) {
+					    if (bulkItemResponse.isFailed()) { 
+					        System.out.println(bulkItemResponse.getFailure()); 
+					    }
+					}
+				}
+				
+				bulkRequest = new BulkRequest();
+				bulkCount = 0;
 			}
 		}
 		
-		if (indexer == null) {
-			return false;
-		}
+		public void flush() throws IOException {
+			if (bulkCount > 0) {
+				BulkResponse bulkResponse = client.bulk(bulkRequest, RequestOptions.DEFAULT);
 			
-		IndexDocument doc = createIndexDocument(currentUser, uri, paths);
-		
-		doc.setIndexState(IndexingState.INDEXING);
-		doc.setIndexStartedAt(new Date(System.currentTimeMillis()));
-		indexRepository.save(doc);
-
-		
-		indexer.indexCollection(elasticConfiguration.getIndexIp(), elasticConfiguration.getIndexDataName(), uri, paths);
-		
-		doc.setIndexState(IndexingState.INDEXED);
-		doc.setIndexCompletedAt(new Date(System.currentTimeMillis()));
-		indexRepository.save(doc);
-		
-		return true;
-	}
-	
-	public boolean unindexCollection(UserPrincipal currentUser, String uri) throws IOException {
-		String datasetUuid = SEMAVocabulary.getId(uri);
-		
-		Optional<Dataset> dopt = datasetRepository.findByUuidAndUserId(datasetUuid, new ObjectId(currentUser.getId()));
-			
-		if (!dopt.isPresent()) {
-			return false;
-		}
-			
-		Dataset dataset = dopt.get();
-
-		PublishState ps = null;
-		Indexer indexer = null;
-
-		for (VirtuosoConfiguration vc : virtuosoConfigurations.values()) {
-			ps = dataset.checkPublishState(vc.getId());
-			if (ps != null) {
-				indexer = new Indexer(vc.getSparqlEndpoint());
-				break;
+				if (bulkResponse.hasFailures()) { 
+					for (BulkItemResponse bulkItemResponse : bulkResponse) {
+					    if (bulkItemResponse.isFailed()) { 
+					        System.out.println(bulkItemResponse.getFailure()); 
+					    }
+					}
+				}
 			}
 		}
-		
-		if (indexer == null) {
-			return false;
-		}
+	}
 	
-		IndexDocument doc = indexRepository.findByDatasetUuidAndHostAndUserId(datasetUuid, elasticConfiguration.getIndexIp(), new ObjectId(currentUser.getId())).get();
+	private XContentBuilder buildItem(String graph, Resource subject, Model model, SPARQLStructure ss, List<String> keys, Map<Integer, IndexKeyMetadata> keyMap) throws IOException {
+		XContentBuilder builder = XContentFactory.jsonBuilder();
+		builder.startObject();
+		builder.field("ctype", "dataset");
+		builder.field("iri", subject.getURI());
+	    builder.field("graph", graph);
 
-		doc.setIndexState(IndexingState.UNINDEXING);
-		doc.setIndexStartedAt(new Date(System.currentTimeMillis()));
-		indexRepository.save(doc);
+    	List<List<String>> lexicalForms = new ArrayList<>();
+    	List<List<String>> languages = new ArrayList<>();
+    	List<List<String>> uris = new ArrayList<>();
+    	
+    	for (String key : keys) {
+    		
+    		List<RDFNode> res  = ss.getResultForKey(model, subject, key);
+//    		System.out.println(i + " " + res);
 
-		indexer.unindexCollection(elasticConfiguration.getIndexIp(), elasticConfiguration.getIndexDataName(), uri);
+        	List<String> lexicalForm = new ArrayList<>();
+        	lexicalForms.add(lexicalForm);
+        	
+        	List<String> language = new ArrayList<>();
+        	languages.add(language);
+        	
+        	List<String> uri = new ArrayList<>();
+        	uris.add(uri);
+		    	
+        	for (RDFNode node : res) {
+	    		if (node.isResource()) {
+	    			uri.add(node.toString());
+	    		} else if (node.isLiteral()) {
+	    			Literal lit = node.asLiteral();
+	    			lexicalForm.add(lit.getLexicalForm());
+	    			String lang = lit.getLanguage();
+	    			if (lang != null && lang.length() > 0) {
+	    				language.add(lang);
+	    			}
+	    		}
+	    	}
 
-		indexRepository.delete(doc);
+    	}
+    	
+    	for (int i = 0; i < keys.size(); i++) {
+    		String key = keys.get(i);
+    		
+    		int keyIndex = Integer.parseInt(key.substring(1));
+    		IndexKeyMetadata ikm = keyMap.get(keyIndex);
+
+    		String keyName = ikm == null ? key : ikm.getName();
+    		
+    		String uriSuffix = ikm != null && ikm.getDefaultTermType() == RDFTermType.IRI ? "" : "-uri" ;
+    		String lexicalFormSuffix = ikm != null && ikm.getDefaultTermType() == RDFTermType.LITERAL ? "" : "-lexical-form" ;
+    		
+			if (uris.get(i).size() > 1) {
+			    builder.startArray(keyName + uriSuffix);
+		    	for (String uri : uris.get(i)) {
+	    			builder.value(uri);
+		    	}
+		    	builder.endArray();
+			} else if (uris.get(i).size() == 1) {
+    			builder.field(keyName + uriSuffix, uris.get(i).get(0));
+    		}
+    		
+			if (lexicalForms.get(i).size() > 1) {
+			    builder.startArray(keyName + lexicalFormSuffix);
+		    	for (String lexicalForm : lexicalForms.get(i)) {
+	    			builder.value(lexicalForm);
+		    	}
+		    	builder.endArray();
+			    builder.startArray(keyName + lexicalFormSuffix + "-raw");
+		    	for (String lexicalForm : lexicalForms.get(i)) {
+	    			builder.value(lexicalForm);
+		    	}
+		    	builder.endArray();
+    		} else if (lexicalForms.get(i).size() == 1) {
+    			builder.field(keyName + lexicalFormSuffix, lexicalForms.get(i).get(0));
+    			builder.field(keyName + lexicalFormSuffix + "-raw", lexicalForms.get(i).get(0));
+    		}
 			
-		return true;
+			if (ikm.isLanguageField()) {
+	    		if (languages.get(i).size() > 1) {
+				    builder.startArray(keyName + "-lang");
+			    	for (String language : languages.get(i)) {
+		    			builder.value(language);
+			    	}
+			    	builder.endArray();
+	    		} else if (languages.get(i).size() == 1) {
+	    			builder.field(keyName + "-lang", languages.get(i).get(0));
+	    		}
+			}
+    	}
+    	
+		builder.endObject();
+		
+//		String json = Strings.toString(builder);
+//		System.out.println(json);
+
+		return builder;
 		
 	}
+	
+
+	
+
 
 	
 //	public boolean doIndex(UserPrincipal currentUser, String uri, List<String> path) throws IOException  {
@@ -910,18 +1215,18 @@ public class IndexService {
 //		
 //	}
 //	
-	public IndexDocumentResponse getIndexes(UserPrincipal currentUser, String datasetUri) {
-		
-		String datasetUuid = SEMAVocabulary.getId(datasetUri);
-		
-		Optional<IndexDocument> doc = indexRepository.findByDatasetUuidAndHostAndUserId(datasetUuid, elasticConfiguration.getIndexIp(), new ObjectId(currentUser.getId()));
-		
-		if (doc.isPresent()) {
-			return modelMapper.index2IndexResponse(doc.get());
-		} else {
-			return null;
-		}
-	}
+//	public IndexDocumentResponse getIndexes(UserPrincipal currentUser, String datasetUri) {
+//		
+//		String datasetUuid = SEMAVocabulary.getId(datasetUri);
+//		
+//		Optional<IndexDocument> doc = indexRepository.findByDatasetUuidAndHostAndUserId(datasetUuid, elasticConfiguration.getIndexIp(), new ObjectId(currentUser.getId()));
+//		
+//		if (doc.isPresent()) {
+//			return modelMapper.index2IndexResponse(doc.get());
+//		} else {
+//			return null;
+//		}
+//	}
 	
 //	public boolean publish(UserPrincipal currentUser, String id) throws Exception {
 //		Optional<VocabularizerDocument> doc = vocabularizerRepository.findByIdAndUserId(new ObjectId(id), new ObjectId(currentUser.getId()));

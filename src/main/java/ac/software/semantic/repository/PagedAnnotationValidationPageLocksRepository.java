@@ -19,6 +19,8 @@ public interface PagedAnnotationValidationPageLocksRepository extends MongoRepos
     Optional<PagedAnnotationValidationPageLocks> findByPagedAnnotationValidationIdAndPageAndModeAndUserId(ObjectId pavId, int page, APIAnnotationEditGroupController.AnnotationValidationRequest mode, ObjectId userId);
 
     Optional<PagedAnnotationValidationPageLocks> findByUserId(ObjectId userId);
+    
+    List<PagedAnnotationValidationPageLocks> findByAnnotationEditGroupId(ObjectId aegId);
 
     List<PagedAnnotationValidationPageLocks> findByCreatedAtLessThan(Date date);
 }

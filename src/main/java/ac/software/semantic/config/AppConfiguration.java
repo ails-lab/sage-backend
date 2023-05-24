@@ -1,25 +1,55 @@
 package ac.software.semantic.config;
 
+import java.io.IOException;
 import java.io.InputStream;
+import java.io.StringWriter;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.TreeSet;
+import java.util.UUID;
 
+import org.apache.http.client.ClientProtocolException;
+import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.impl.client.HttpClients;
+import org.apache.http.util.EntityUtils;
+import org.apache.jena.atlas.logging.Log;
+import org.apache.jena.datatypes.xsd.XSDDatatype;
+import org.apache.jena.graph.Node;
+import org.apache.jena.query.DatasetFactory;
 import org.apache.jena.query.QueryExecution;
 import org.apache.jena.query.QueryExecutionFactory;
 import org.apache.jena.query.QueryFactory;
 import org.apache.jena.query.QuerySolution;
 import org.apache.jena.query.ResultSet;
 import org.apache.jena.query.Syntax;
+import org.apache.jena.rdf.model.Model;
+import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.rdf.model.RDFNode;
 import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.riot.JsonLDWriteContext;
+import org.apache.jena.riot.RDFDataMgr;
+import org.apache.jena.riot.RDFFormat;
+import org.apache.jena.riot.RiotException;
+import org.apache.jena.riot.out.NodeToLabel;
+import org.apache.jena.riot.system.PrefixMap;
+import org.apache.jena.riot.system.SyntaxLabels;
+import org.apache.jena.riot.writer.JsonLDWriter;
+import org.apache.jena.sparql.core.DatasetGraph;
+import org.apache.jena.sparql.core.Quad;
+import org.apache.jena.sparql.util.Context;
 import org.semanticweb.owlapi.apibinding.OWLManager;
 import org.semanticweb.owlapi.model.OWLOntology;
 import org.semanticweb.owlapi.model.OWLOntologyManager;
@@ -34,23 +64,47 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.DependsOn;
 import org.springframework.core.env.Environment;
 import org.springframework.core.io.ResourceLoader;
+import org.springframework.core.task.TaskExecutor;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.util.FileCopyUtils;
 import org.springframework.web.client.RestTemplate;
 
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.github.jsonldjava.core.JsonLdApi;
+import com.github.jsonldjava.core.JsonLdError;
+import com.github.jsonldjava.core.JsonLdOptions;
+import com.github.jsonldjava.core.JsonLdProcessor;
+import com.github.jsonldjava.core.RDFDataset;
+import com.github.jsonldjava.utils.JsonUtils;
+
+import ac.software.semantic.model.BlazegraphConfiguration;
+import ac.software.semantic.model.DataService;
 import ac.software.semantic.model.Database;
 import ac.software.semantic.model.ElasticConfiguration;
 import ac.software.semantic.model.FileSystemConfiguration;
+import ac.software.semantic.model.LodViewConfiguration;
+import ac.software.semantic.model.TripleStoreConfiguration;
 import ac.software.semantic.model.VirtuosoConfiguration;
+import ac.software.semantic.model.Vocabulary;
+import ac.software.semantic.model.VocabularyContainer;
+import ac.software.semantic.model.DataService.DataServiceType;
+import ac.software.semantic.repository.BlazegraphConfigurationRepository;
+import ac.software.semantic.repository.DataServiceRepository;
 import ac.software.semantic.repository.DatabaseRepository;
 import ac.software.semantic.repository.ElasticConfigurationRepository;
 import ac.software.semantic.repository.FileSystemConfigurationRepository;
+import ac.software.semantic.repository.LodViewConfigurationRepository;
 import ac.software.semantic.repository.VirtuosoConfigurationRepository;
+import ac.software.semantic.repository.VocabularyRepository;
 import edu.ntua.isci.ac.d2rml.vocabulary.D2RMLOPVocabulary;
-import edu.ntua.isci.ac.lod.vocabularies.DCTVocabulary;
-import edu.ntua.isci.ac.lod.vocabularies.RDFSVocabulary;
-import edu.ntua.isci.ac.lod.vocabularies.sema.SEMAVocabulary;
+import edu.ntua.isci.ac.d2rml.vocabulary.FunctionImplementation;
+import edu.ntua.isci.ac.d2rml.vocabulary.FunctionProcessor;
 import edu.ntua.isci.ac.semaspace.index.Indexer;
 import edu.ntua.isci.ac.semaspace.query.Searcher;
-import edu.ntua.isci.ac.semaspace.query.URIDescriptor;
 import net.sf.ehcache.Cache;
 import net.sf.ehcache.CacheManager;
 
@@ -67,22 +121,34 @@ public class AppConfiguration {
 	private String database;
 
 	@Value("${database.virtuosoConfiguration.name}")
-	private String virtuosoConfiguration;
-	
+	private List<String> virtuosoConfiguration;
+
+	@Value("${database.virtuosoConfiguration.localImport:}")
+	private List<Boolean> virtuosoLocalImport;
+
+	@Value("${database.lodviewConfiguration.name}")
+	private String lodViewConfiguration;
+
     @Value("${virtuoso.isql.username}")
-    private String isqlUsername;
+    private List<String> isqlUsername;
 
     @Value("${virtuoso.isql.password}")
-    private String isqlPassword;
+    private List<String> isqlPassword;
 
     @Value("${virtuoso.sftp.username}")
-    private String sftpUsername;
+    private List<String> sftpUsername;
 
     @Value("${virtuoso.sftp.password}")
-    private String sftpPassword;
+    private List<String> sftpPassword;
 
 	@Value("${database.elasticConfiguration.name}")
 	private String elasticConfiguration;
+	
+    @Value("${elastic.username}")
+    private List<String> elasticUsername;
+
+    @Value("${elastic.password}")
+    private List<String> elasticPassword;
 
 	@Value("${database.fileSystemConfiguration.name:#{null}}")
 	private String fileSystemConfiguration;
@@ -96,27 +162,41 @@ public class AppConfiguration {
 	@Value("${cache.labels.live-time}")
 	private int liveTime;
 	
-    @Value("${app.schema.legacy-uris}")
-    private boolean legacyUris;
-
 	@Autowired
 	private DatabaseRepository databaseRepository;
+	
+	@Autowired
+	private VocabularyRepository vocRepository;
+	
+	@Autowired
+	private DataServiceRepository dataServiceRepository;
 
 	@Autowired
 	private VirtuosoConfigurationRepository virtuosoConfigurationRepository;
+
+	@Autowired
+	private BlazegraphConfigurationRepository blazegraphConfigurationRepository;
 
 	@Autowired
 	private ElasticConfigurationRepository elasticConfigurationRepository;
 
 	@Autowired
 	private FileSystemConfigurationRepository fileSystemConfigurationRepository;
+	
+	@Autowired
+	private LodViewConfigurationRepository lodViewConfigurationRepository;
 
 	@Autowired
 	private Environment env;
 
 	@Autowired
-	ResourceLoader resourceLoader;
+	private ResourceLoader resourceLoader;
 
+	@Bean
+	public PasswordEncoder passwordEncoder() {
+	    return new BCryptPasswordEncoder();
+	}
+	
 	@Bean(name = "query-ontology")
 	public OWLOntology getQueryOntology() {
 
@@ -139,8 +219,38 @@ public class AppConfiguration {
 
 	@Bean(name = "preprocess-functions")
 	public Map<Resource, List<String>> getPreprocessFunctions() {
-		return D2RMLOPVocabulary.functions;
+		Map<Resource, List<String>> res = new LinkedHashMap<>();
+		
+		for (Map.Entry<Resource, FunctionImplementation> entry : FunctionProcessor.functions.entrySet()) {
+			res.put(entry.getKey(), entry.getValue().getArguments());
+		}
+		
+		for (Map.Entry<Resource, List<String>> entry : D2RMLOPVocabulary.functions.entrySet()) {
+			if (D2RMLOPVocabulary.exposedFunctions.contains(entry.getKey())) {
+				res.put(entry.getKey(), entry.getValue());
+			}
+		}
+		
+		return res;
 	}
+	
+	@Bean(name = "preprocess-operations")
+	public Map<Resource, List<String>> getPreprocessOperations() {
+		Map<Resource, List<String>> res = new LinkedHashMap<>();
+		
+		for (Map.Entry<Resource, FunctionImplementation> entry : FunctionProcessor.operators.entrySet()) {
+			res.put(entry.getKey(), entry.getValue().getArguments());
+		}
+		
+		for (Resource entry : D2RMLOPVocabulary.exposedOperators) {
+			List<String> arg = new ArrayList<>();
+			arg.add("argument");
+			res.put(entry, arg);
+		}
+		
+		return res;
+	}
+	
 
 	@Bean(name = "database")
 	public Database getDatabase() {
@@ -152,59 +262,125 @@ public class AppConfiguration {
 			return null;
 		}
 	}
+	
+	@Bean(name = "rdf-vocabularies")
+	@DependsOn("database")
+	public VocabularyContainer getVocabularies(@Qualifier("database") Database database) {
+		logger.info("Loading vocabularies");
 
-	@Bean(name = "virtuoso-configuration")
-	public Map<String,VirtuosoConfiguration> getVirtuosoConfiguration() {
-		Map<String,VirtuosoConfiguration> res = new HashMap<>();
+		VocabularyContainer vocc = new VocabularyContainer();
 		
-		String[] vc = virtuosoConfiguration.split(",");
-		String[] iusername = isqlUsername.split(",");
-		String[] ipassword = isqlPassword.split(",");
-		String[] fusername = sftpUsername.split(",");
-		String[] fpassword = sftpPassword.split(",");
+		for (Vocabulary voc : vocRepository.findByDatabaseId(database.getId())) {
+			if (voc.getSpecification() != null) {
+				logger.info("Loading " + voc.getSpecification());
+				voc.load();
+				vocc.add(voc);
+			}
+		}
 		
-		for (int i = 0; i < vc.length; i++) {
-			Optional<VirtuosoConfiguration> db = virtuosoConfigurationRepository.findByName(vc[i]);
+		return vocc;
+	}
+
+	@Bean(name = "triplestore-configurations")
+	@DependsOn("database")
+	public ConfigurationContainer<TripleStoreConfiguration> getTripleStoreConfigurations(@Qualifier("database") Database database) {
+//		Map<String,TripleStoreConfiguration> res = new HashMap<>();
+		
+		Set<String> asProperties = new TreeSet<>();
+		
+		List<DataService> services = dataServiceRepository.findByDatabaseId(database.getId());
+		for (DataService ds : services) {
+			asProperties.addAll(ds.getAsProperties());
+		}
+		asProperties.add(database.getResourcePrefix() + "graph/content");
+		
+		ConfigurationContainer<TripleStoreConfiguration> tscc = new ConfigurationContainer<>();
+		
+		int c = 1;
+		for (int i = 0; i < virtuosoConfiguration.size(); i++) {
+			Optional<VirtuosoConfiguration> db = virtuosoConfigurationRepository.findByName(virtuosoConfiguration.get(i));
 			if (db.isPresent()) {
 				VirtuosoConfiguration conf = db.get();
-				conf.setIsqlUsername(iusername[i]);
-				conf.setIsqlPassword(ipassword[i]);
-				conf.setSftpUsername(fusername[i]);
-				conf.setSftpPassword(fpassword[i]);
+				conf.setIsqlUsername(isqlUsername.get(i));
+				conf.setIsqlPassword(isqlPassword.get(i));
+				conf.setSftpUsername(sftpUsername.get(i));
+				conf.setSftpPassword(sftpPassword.get(i));
+			
+				if (virtuosoLocalImport.size() == 0) {
+					conf.setLocalImport(true); 
+				} else {
+					conf.setLocalImport(virtuosoLocalImport.get(i));
+				}
 				
-				res.put(conf.getName(), conf);
+				conf.setOrder(c++);
+
+				int cc = 1;
+				for (String s : asProperties) {
+					conf.addGraph(s, cc++ + "");
+				}
 				
-//				System.out.println(conf.getName() + "*" + conf.getSftpUsername() + "*" + conf.getSftpPassword() + "*" + conf.getFileServer() + "*" + conf.getUploadFolder());
+				tscc.add(conf);
+//				System.out.println(">>> " + conf.getName() + " " + conf.getClass());
+			}
+		}
+		
+		for (int i = 0; i < virtuosoConfiguration.size(); i++) {
+			Optional<BlazegraphConfiguration> db = blazegraphConfigurationRepository.findByName(virtuosoConfiguration.get(i));
+			if (db.isPresent()) {
+				BlazegraphConfiguration conf = db.get();
+				conf.setSftpUsername(sftpUsername.get(i));
+				conf.setSftpPassword(sftpPassword.get(i));
+				
+				if (virtuosoLocalImport.size() == 0) {
+					conf.setLocalImport(true); 
+				} else {
+					conf.setLocalImport(virtuosoLocalImport.get(i));
+				}
+				
+				tscc.add(conf);
+//				System.out.println(">>> " + conf.getName() + " " + conf.getClass());
+			}
+		}
+		
+		return tscc;
+	}
+
+	@Bean(name = "elastic-configurations")
+	public ConfigurationContainer<ElasticConfiguration> getElasticConfigurations() {
+
+		ConfigurationContainer<ElasticConfiguration> ecc = new ConfigurationContainer<>();
+		
+		String[] ec = elasticConfiguration.split(",");
+		
+		for (int i = 0; i < ec.length; i++) {
+			Optional<ElasticConfiguration> db = elasticConfigurationRepository.findByName(ec[i]);
+			if (db.isPresent()) {
+				ElasticConfiguration conf = db.get();
+				if (elasticUsername.size() > 0) {
+					conf.setUsername(elasticUsername.get(i));
+					conf.setPassword(elasticPassword.get(i));
+				}
+				
+				ecc.add(conf);
 			}
 			
 		}
 		
-		return res;
+		return ecc;
 	}
 
-	@Bean(name = "elastic-configuration")
-	public ElasticConfiguration getElasticConfiguration() {
-
-		Optional<ElasticConfiguration> db = elasticConfigurationRepository.findByName(elasticConfiguration);
-		if (db.isPresent()) {
-			return db.get();
-		} else {
-			return null;
-		}
+	@Bean(name = "lodview-configuration")
+	public LodViewConfiguration getLodViewConfiguration() {
+		return lodViewConfigurationRepository.findByName(lodViewConfiguration).orElseGet(null);
 	}
-
+	
 	@Bean(name = "filesystem-configuration")
 	@DependsOn({ "database" })
 	public FileSystemConfiguration getFileSystemConfiguration(Database db) throws Exception {
 
 		if (fileSystemConfiguration != null) {
-			Optional<FileSystemConfiguration> fs = fileSystemConfigurationRepository
-					.findByName(fileSystemConfiguration);
-			if (fs.isPresent()) {
-				return fs.get();
-			} else {
-				return null;
-			}
+			return fileSystemConfigurationRepository.findByName(fileSystemConfiguration).orElse(null);
+
 		} else if (fileSystemConfigurationFolder != null) {
 			if (!fileSystemConfigurationFolder.endsWith("/") && !fileSystemConfigurationFolder.endsWith("\\")) {
 				fileSystemConfigurationFolder = fileSystemConfigurationFolder + "/";
@@ -259,9 +435,34 @@ public class AppConfiguration {
 	    }
 	    
 	    return singletonManager.getCache("endpoints");
+	}
+	
+	@Bean(name = "thesauri-cache")
+	public Cache getThesauriCache() {
+	    CacheManager singletonManager = CacheManager.create();
+	    if (!singletonManager.cacheExists("thesauri")) {
+		    singletonManager.addCache(new Cache("thesauri", 100, false, false, liveTime, liveTime));
+		    
+			logger.info("Created thesauri cache.");
+	    }
+	    
+	    return singletonManager.getCache("thesauri");
+	}
+	
+	@Bean(name = "indices-cache")
+	public Cache getIndicesCache() {
+	    CacheManager singletonManager = CacheManager.create();
+	    if (!singletonManager.cacheExists("indices")) {
+		    singletonManager.addCache(new Cache("indices", cacheSize, false, false, liveTime, liveTime));
+		    
+			logger.info("Created indices cache.");
+	    }
+	    
+	    return singletonManager.getCache("indices");
 	    
 	}
 
+	@Bean(name = "system-mac-address")
 	public static String getSystemMac() throws Exception {
 		String OSName = System.getProperty("os.name");
 		if (OSName.contains("Windows")) {
@@ -334,216 +535,91 @@ public class AppConfiguration {
 
 	// NOT CORRECT FOR MULTIPLE VIRTUOSOS! SEARCHES ONLY THE FIRST VIRTUOSO
 	@Bean(name = "searcher")
-	@DependsOn({ "virtuoso-configuration" })
-	public Searcher getSearcher(@Qualifier("virtuoso-configuration") Map<String,VirtuosoConfiguration> vc) {
+	@DependsOn({ "triplestore-configurations" })
+	public Searcher getSearcher(@Qualifier("triplestore-configurations") ConfigurationContainer<TripleStoreConfiguration> vc) {
 		return new Searcher(vc.values().iterator().next().getSparqlEndpoint());
 	}
 
-	@Bean(name = "vocabularies")
-	@DependsOn({ "virtuoso-configuration" })
-	public VocabulariesBean vocs(@Qualifier("virtuoso-configuration") Map<String,VirtuosoConfiguration> vcs) {
-		VocabulariesBean vb = new VocabulariesBean();
-		for (VirtuosoConfiguration vc : vcs.values()) {
-			vb.setMap(createVocabulariesMap(vc, legacyUris));
-		}
 
-		return vb;
-	}
-	
-	@Bean(name = "all-datasets")
-	@DependsOn({ "virtuoso-configuration" })
-	public VocabulariesBean dataset(@Qualifier("virtuoso-configuration") Map<String,VirtuosoConfiguration> vcs) {
-		VocabulariesBean vb = new VocabulariesBean();
-		for (VirtuosoConfiguration vc : vcs.values()) {
-			vb.setMap(createDatasetsMap(vc, legacyUris));
-		}
-
-		return vb;
-	}	
-	
-	public static Map<String, VocabularyInfo> createDatasetsMap(VirtuosoConfiguration vc, boolean legacyUris) {
-		String sparql = legacyUris ? 
-				"SELECT ?d ?endpoint ?identifier ?prefix ?labelProp FROM <" + SEMAVocabulary.contentGraph + "> WHERE { "  
-				+ "   ?d a ?tt . VALUES ?t { <" + SEMAVocabulary.VocabularyCollection + "> <" + SEMAVocabulary.DataCollection + "> } . "
-				+ "   ?d <http://purl.org/dc/elements/1.1/identifier> ?identifier . "
-				+ "   OPTIONAL { ?d <http://sw.islab.ntua.gr/apollonis/ms/endpoint> ?endpoint . } "
-				+ "   OPTIONAL { ?d <http://sw.islab.ntua.gr/apollonis/ms/class> ?cp . "
-				+ "              ?cp a ?ctype . VALUES ?ctype { <" + SEMAVocabulary.VocabularyTerm + "> <" + SEMAVocabulary.CollectionResource + "> } . "  
-				+ "              ?cp <http://sw.islab.ntua.gr/apollonis/ms/prefix> ?prefix } ."
-				+ "   OPTIONAL { ?d <http://sw.islab.ntua.gr/apollonis/ms/dataProperty> ?dp . "
-				+ "              ?dp <http://purl.org/dc/elements/1.1/type> <http://www.w3.org/2000/01/rdf-schema#label> . "
-				+ "              ?dp <http://sw.islab.ntua.gr/apollonis/ms/uri> ?labelProp . } } " :
-					
-				"SELECT ?d ?endpoint ?identifier ?prefix ?labelProp FROM <" + SEMAVocabulary.contentGraph + "> WHERE { " 
-				+ "   ?d a ?tt . VALUES ?t { <" + SEMAVocabulary.VocabularyCollection + "> <" + SEMAVocabulary.DataCollection + "> } . "
-				+ "   ?d <" + DCTVocabulary.identifier + "> ?identifier . "
-				+ "   OPTIONAL { ?d <" + SEMAVocabulary.endpoint + "> ?endpoint . } "
-				+ "   OPTIONAL { ?d <" + SEMAVocabulary.clazz + "> ?cp . "
-				+ "              ?cp a ?ctype . VALUES ?ctype { <" + SEMAVocabulary.VocabularyTerm + "> <" + SEMAVocabulary.CollectionResource + "> } . "  
-				+ "              ?cp <" + SEMAVocabulary.prefix + "> ?prefix } ."
-				+ "   OPTIONAL { ?d <" + SEMAVocabulary.dataProperty + "> ?dp . "
-				+ "              ?dp <" + DCTVocabulary.type + "> <" + RDFSVocabulary.label + "> . "
-				+ "              ?dp <" + SEMAVocabulary.uri + "> ?labelProp . } } ";
-					
-
-		Map<String, VocabularyInfo> map = new HashMap<>();
-
-//		System.out.println(QueryFactory.create(sparql, Syntax.syntaxARQ));
-
-		try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(sparql, Syntax.syntaxARQ))) {
-			ResultSet rs = qe.execSelect();
-//
-			while (rs.hasNext()) {
-				QuerySolution qs = rs.next();
-//				System.out.println(qs);
-//
-				String graph = qs.get("d").toString();
-				RDFNode prefix = qs.get("prefix");
-
-				if (prefix != null) { // SHOULD NOT BE NULL!!
-//					String identifier = qs.get("identifier").toString();
-
-					RDFNode endpoint = qs.get("endpoint");
-
-					VocabularyInfo vi = map.get(prefix.toString());
-					if (vi == null) {
-						if (endpoint == null) {
-							vi = new VocabularyInfo(graph);
-						} else {
-							vi = new VocabularyInfo(graph, endpoint.toString());
-						}
-						vi.setVirtuoso(vc);
-						
-						map.put(prefix.toString(), vi);
-					}
-				}
-			}
-		}
-
-		return map;
-	}
-
-//	@Bean(name = "all-prefixes")
-//	@DependsOn({ "virtuoso-configuration" })
-//    private static Set<URIDescriptor> allPrefixes(@Qualifier("virtuoso-configuration") VirtuosoConfiguration vc) {
-//    	Set<URIDescriptor> res = new HashSet<>();
-//    
-//		String sparql = "SELECT ?prefix ?type FROM <" + SEMAVocabulary.contentGraph + "> WHERE { " +
-//				   "?url  a ?type . VALUES ?type { <" + SEMAVocabulary.AssertionCollection + "> <" + SEMAVocabulary.VocabularyCollection + "> <" + SEMAVocabulary.DataCollection + "> } . " +
-//		           "?url <" + SEMAVocabulary.clazz + "> ?c . " + 
-//		           "?c a ?ctype . VALUES ?ctype { <" + SEMAVocabulary.VocabularyTerm + "> <" + SEMAVocabulary.CollectionResource + "> } ." + 
-//		           "?c <" + SEMAVocabulary.prefix + "> ?prefix  }";
-//
-//		System.out.println(QueryFactory.create(sparql.toString(), Syntax.syntaxARQ));
-//		try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(sparql.toString(), Syntax.syntaxARQ))) {
-//			ResultSet rs = qe.execSelect();
-//			while (rs.hasNext()) {
-//				QuerySolution sol = rs.next();
-//				String prefix = sol.get("prefix").toString();
-//				String type = sol.get("type").toString();
-//				res.add(new URIDescriptor(prefix, type));
-//			}
-//		}
-//		
-//		return res;
-//
-//    }
-	
-	public static Map<String, VocabularyInfo> createVocabulariesMap(VirtuosoConfiguration vc, boolean legacyUris) {
-		String sparql = legacyUris ? 
-				"SELECT ?d ?endpoint ?identifier ?prefix ?labelProp " + "WHERE { " + "GRAPH <"
-				+ SEMAVocabulary.contentGraph + "> { " + "   ?d a <" + SEMAVocabulary.VocabularyCollection + "> . "
-				+ "   ?d <http://purl.org/dc/elements/1.1/identifier> ?identifier . "
-				+ "   OPTIONAL { ?d <http://sw.islab.ntua.gr/apollonis/ms/endpoint> ?endpoint . } "
-				+ "   OPTIONAL { ?d <http://sw.islab.ntua.gr/apollonis/ms/class> ?cp . "
-				+ "              ?cp <http://sw.islab.ntua.gr/apollonis/ms/prefix> ?prefix } ."
-				+ "   OPTIONAL { ?d <http://sw.islab.ntua.gr/apollonis/ms/dataProperty> ?dp . "
-				+ "              ?dp <http://purl.org/dc/elements/1.1/type> <http://www.w3.org/2000/01/rdf-schema#label> . "
-				+ "              ?dp <http://sw.islab.ntua.gr/apollonis/ms/uri> ?labelProp . } } }" :
-					
-				"SELECT ?d ?endpoint ?identifier ?prefix ?labelProp " + "WHERE { " + "GRAPH <"
-				+ SEMAVocabulary.contentGraph + "> { " + "   ?d a <" + SEMAVocabulary.VocabularyCollection + "> . "
-				+ "   ?d <http://purl.org/dc/elements/1.1/identifier> ?identifier . "
-				+ "   OPTIONAL { ?d <" + SEMAVocabulary.endpoint + "> ?endpoint . } "
-				+ "   OPTIONAL { ?d <" + SEMAVocabulary.clazz + "> ?cp . "
-				+ "              ?cp <" + SEMAVocabulary.prefix + "> ?prefix } ."
-				+ "   OPTIONAL { ?d <" + SEMAVocabulary.dataProperty + "> ?dp . "
-				+ "              ?dp <" + DCTVocabulary.type + "> <" + RDFSVocabulary.label + "> . "
-				+ "              ?dp <" + SEMAVocabulary.uri + "> ?labelProp . } } }";
-					
-
-		Map<String, VocabularyInfo> map = new HashMap<>();
-
-//		System.out.println(QueryFactory.create(sparql, Syntax.syntaxARQ));
-
-		try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(sparql, Syntax.syntaxARQ))) {
-			ResultSet rs = qe.execSelect();
-//
-			while (rs.hasNext()) {
-				QuerySolution qs = rs.next();
-//				System.out.println(qs);
-//
-				String graph = qs.get("d").toString();
-				RDFNode prefix = qs.get("prefix");
-
-				if (prefix != null) { // SHOULD NOT BE NULL!!
-//					String identifier = qs.get("identifier").toString();
-
-					RDFNode endpoint = qs.get("endpoint");
-
-					VocabularyInfo vi = map.get(prefix.toString());
-					if (vi == null) {
-						if (endpoint == null) {
-							vi = new VocabularyInfo(graph);
-						} else {
-							vi = new VocabularyInfo(graph, endpoint.toString());
-						}
-						vi.setVirtuoso(vc);
-						
-						map.put(prefix.toString(), vi);
-					}
-				}
-			}
-		}
-
-//		System.out.println("END");
-
-		return map;
-	}
-
-	@Bean(name = "prefixes")
-	@DependsOn({ "virtuoso-configuration" })
-    private static Set<URIDescriptor> vocabularyPrefixes(@Qualifier("virtuoso-configuration") Map<String,VirtuosoConfiguration> vcs) {
-    	Set<URIDescriptor> res = new HashSet<>();
-    
-		String sparql = "SELECT ?prefix ?type FROM <" + SEMAVocabulary.contentGraph + "> WHERE { " +
-				   "?url  a ?type . VALUES ?type { <http://sw.islab.ntua.gr/semaspace/model/AssertionCollection> <http://sw.islab.ntua.gr/semaspace/model/VocabularyCollection> } . " +
-		           "?url <http://sw.islab.ntua.gr/apollonis/ms/class> " + 
-		           "     [ a       <http://sw.islab.ntua.gr/apollonis/ms/VocabularyTerm> ;" + 
-		           "       <http://sw.islab.ntua.gr/apollonis/ms/prefix> ?prefix ]  }";
-
-//		System.out.println(QueryFactory.create(sparql.toString(), Syntax.syntaxARQ));
-		for (VirtuosoConfiguration vc : vcs.values()) { 
-	
-			try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(sparql.toString(), Syntax.syntaxARQ))) {
-				ResultSet rs = qe.execSelect();
-				while (rs.hasNext()) {
-					QuerySolution sol = rs.next();
-					String prefix = sol.get("prefix").toString();
-					String type = sol.get("type").toString();
-					res.add(new URIDescriptor(prefix, type));
-				}
-			}
-		}
-		
-		return res;
-
-    }
 	
 	@Bean(name = "date-format")
 	public SimpleDateFormat getDateFormat() {
 		return new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
 	}
+	
+    @Bean(name="mappingExecutor")
+    public TaskExecutor mappingExecutor() {
+        ThreadPoolTaskExecutor threadPoolTaskExecutor = new ThreadPoolTaskExecutor();
+        threadPoolTaskExecutor.setThreadNamePrefix("MappingTask-");
+        threadPoolTaskExecutor.setCorePoolSize(3);
+        threadPoolTaskExecutor.setMaxPoolSize(3);
+        threadPoolTaskExecutor.setQueueCapacity(600);
+        threadPoolTaskExecutor.afterPropertiesSet();
+        logger.info("Mapping ThreadPoolTaskExecutor set");
+        return threadPoolTaskExecutor;
+    }
+    
+    @Bean(name="publishExecutor")
+    public TaskExecutor publishExecutor() {
+        ThreadPoolTaskExecutor threadPoolTaskExecutor = new ThreadPoolTaskExecutor();
+        threadPoolTaskExecutor.setThreadNamePrefix("PublishTask-");
+        threadPoolTaskExecutor.setCorePoolSize(3);
+        threadPoolTaskExecutor.setMaxPoolSize(3);
+        threadPoolTaskExecutor.setQueueCapacity(600);
+        threadPoolTaskExecutor.afterPropertiesSet();
+        logger.info("Publish ThreadPoolTaskExecutor set");
+        return threadPoolTaskExecutor;
+    }  
+    
+    @Bean(name="createDistributionExecutor")
+    public TaskExecutor createDistributionExecutor() {
+        ThreadPoolTaskExecutor threadPoolTaskExecutor = new ThreadPoolTaskExecutor();
+        threadPoolTaskExecutor.setThreadNamePrefix("CreateDistributionTask-");
+        threadPoolTaskExecutor.setCorePoolSize(1);
+        threadPoolTaskExecutor.setMaxPoolSize(1);
+        threadPoolTaskExecutor.setQueueCapacity(600);
+        threadPoolTaskExecutor.afterPropertiesSet();
+        logger.info("CreateDistribution ThreadPoolTaskExecutor set");
+        return threadPoolTaskExecutor;
+    }    
+    
+    @Bean(name="indexExecutor")
+    public TaskExecutor indexExecutor() {
+        ThreadPoolTaskExecutor threadPoolTaskExecutor = new ThreadPoolTaskExecutor();
+        threadPoolTaskExecutor.setThreadNamePrefix("IndexTask-");
+        threadPoolTaskExecutor.setCorePoolSize(1);
+        threadPoolTaskExecutor.setMaxPoolSize(1);
+        threadPoolTaskExecutor.setQueueCapacity(600);
+        threadPoolTaskExecutor.afterPropertiesSet();
+        logger.info("Publish ThreadPoolTaskExecutor set");
+        return threadPoolTaskExecutor;
+    }    
+    
+    @Bean(name="pagedAnnotationValidationExecutor")
+    public TaskExecutor pagedAnnotationValidationExecutor() {
+        ThreadPoolTaskExecutor threadPoolTaskExecutor = new ThreadPoolTaskExecutor();
+        threadPoolTaskExecutor.setThreadNamePrefix("PagedAnnotationValidationTask-");
+        threadPoolTaskExecutor.setCorePoolSize(3);
+        threadPoolTaskExecutor.setMaxPoolSize(3);
+        threadPoolTaskExecutor.setQueueCapacity(600);
+        threadPoolTaskExecutor.afterPropertiesSet();
+        logger.info("Mapping ThreadPoolTaskExecutor set");
+        return threadPoolTaskExecutor;
+    }
+   
+    @Bean(name="filterAnnotationValidationExecutor")
+    public TaskExecutor filterAnnotationValidationExecutor() {
+        ThreadPoolTaskExecutor threadPoolTaskExecutor = new ThreadPoolTaskExecutor();
+        threadPoolTaskExecutor.setThreadNamePrefix("FilterAnnotationValidationTask-");
+        threadPoolTaskExecutor.setCorePoolSize(3);
+        threadPoolTaskExecutor.setMaxPoolSize(3);
+        threadPoolTaskExecutor.setQueueCapacity(600);
+        threadPoolTaskExecutor.afterPropertiesSet();
+        logger.info("Mapping ThreadPoolTaskExecutor set");
+        return threadPoolTaskExecutor;
+    }    
+    
+    
     
 //    @Bean(name="base-time-graph")
 //    public GraphDescriptor getBaseTimeGraph() {	
@@ -587,6 +663,99 @@ public class AppConfiguration {
 		return builder.build();
 	}
 
+//	@Bean(name = "w3c-anno-jsonld-context")
+//	public JsonLDWriteContext getContext() {
+//		JsonLDWriteContext ctx = new JsonLDWriteContext();
+//		
+//        HttpGet request = new HttpGet("http://www.w3.org/ns/anno.jsonld");
+//        try (CloseableHttpResponse response = HttpClients.createDefault().execute(request)) {
+//        	String contextString = EntityUtils.toString(response.getEntity());
+//        	
+//        	
+//        	ObjectMapper mapper = new ObjectMapper();
+//        	Map<String, Object> contextMap = mapper.readValue(contextString, Map.class);
+//        	
+//        	
+//        	Map<String, Object> frame = new HashMap<>();
+//	        frame.put("@type" , "http://www.w3.org/ns/oa#Annotation");
+////        	frame.put("@type" , "oa:Annotation");
+//	        ctx.setFrame(frame);
+////	        frame.put("@context", contextMap);
+//	        ctx.setJsonLDContext(contextMap);
+//	        
+////	        ctx.setJsonLDContext(EntityUtils.toString(response.getEntity()));
+//		} catch (IOException e) {
+//			e.printStackTrace();
+//		}
+//		
+//		return ctx;
+//	}
+	
+
+	@Value("${jsonld.definition.folder}")
+	private String jsonLdFolder;
+	
+	@Bean(name = "annotation-jsonld-context")
+	public Map<String, Object> getContext() {
+		
+		try (InputStream inputStream = resourceLoader.getResource("classpath:" + jsonLdFolder + "anno.jsonld").getInputStream()) {
+			String str = new String(FileCopyUtils.copyToByteArray(inputStream), StandardCharsets.UTF_8);
+//			System.out.println(str);
+//			System.out.println(new ObjectMapper().readValue(str, Map.class));
+//			System.out.println(new ObjectMapper().readValue(str, Map.class).getClass());
+//			System.out.println((Map<String, Object>)new ObjectMapper().readValue(str, Map.class).get("annotation-jsonld-context"));
+//			return (Map<String, Object>)new ObjectMapper().readValue(str, Map.class).get("annotation-jsonld-context");
+			return (Map<String, Object>)new ObjectMapper().readValue(str, Map.class);
+		} catch (Exception ex) {
+			ex.printStackTrace();
+			logger.error("Failed to load anno.jsonld");
+			return null;
+		}
+		
+	}
+	
+	private static Map<String, Object> getRemoteJsonLDContext(String uri) throws ClientProtocolException, IOException {
+        HttpGet request = new HttpGet(uri);
+        try (CloseableHttpResponse response = HttpClients.createDefault().execute(request)) {
+        	String contextString = EntityUtils.toString(response.getEntity());
+        	return new ObjectMapper().readValue(contextString, Map.class);
+        }
+		
+	}
+	
+	public static void main(String[] args) throws Exception {
+		ObjectMapper mapper = new ObjectMapper();
+		
+		JsonLDWriteContext ctx = new JsonLDWriteContext();
+		
+		Map<String, Object> annoContextMap = getRemoteJsonLDContext("http://www.w3.org/ns/anno.jsonld");
+		
+       	Map<String, Object> frame = new HashMap<>();
+        ctx.setFrame(frame);
+    	frame.put("@type" , "http://www.w3.org/ns/oa#Annotation");
+    	frame.put("@context", annoContextMap.get("@context"));
+
+        
+        Model model = ModelFactory.createDefaultModel();
+        RDFDataMgr.read(model, "file://d:/data/crafted/annotation-test.ttl");
+//	        
+        JsonLdOptions options = new JsonLdOptions();
+//        options.setProduceGeneralizedRdf(true);
+        options.setCompactArrays(true);
+        options.useNamespaces = true ; 
+        options.setUseNativeTypes(true); 	      
+        options.setOmitGraph(false);
+//	        
+        final RDFDataset jsonldDataset = (new JenaRDF2JSONLD()).parse(DatasetFactory.wrap(model).asDatasetGraph());
+        Object obj = (new JsonLdApi(options)).fromRDF(jsonldDataset, true);
+//	        
+        Map<String, Object> jn = JsonLdProcessor.frame(obj, frame, options);
+//	     
+        StringWriter sw = new StringWriter();
+        mapper.writerWithDefaultPrettyPrinter().writeValue(sw, jn);
+        System.out.println(sw.toString());
+	}
+	
 //    @Autowired
 //    private ApplicationContext applicationContext;
 //    
@@ -617,5 +786,90 @@ public class AppConfiguration {
 //    }
 	
 
+//	@Bean
+////	@Bean(name = "object-mapper")
+//	public ObjectMapper objectMapper() {
+//		System.out.println("CALLING");
+//	    ObjectMapper mapper = new ObjectMapper();
+////	    mapper.setSerializationInclusion(JsonInclude.Include.NON_NULL);
+//
+//	    SimpleModule module = new SimpleModule();
+//	    module.addSerializer(IndexElement.class, new IndexElementSerializer());
+//	    mapper.registerModule(module);
+//	    
+////	    CollectionType propertiesListType = mapper.getTypeFactory().constructCollectionType(List.class, Property.class);
+////	    SimpleModule module = new SimpleModule();
+////	    module.addSerializer(new PropertyListJSONSerializer(propertiesListType));
+////	    mapper.registerModule(module);
+//
+//	    return mapper;
+//	}
+	
 
+	public static class JenaRDF2JSONLD implements com.github.jsonldjava.core.RDFParser {
+	    NodeToLabel labels = SyntaxLabels.createNodeToLabel() ;
+
+	    @Override
+	    public RDFDataset parse(Object object) throws JsonLdError {
+	        RDFDataset result = new RDFDataset() ;
+	        if ( object instanceof DatasetGraph )
+	        {
+	            DatasetGraph dsg = (DatasetGraph)object ;
+
+	            Iterator<Quad> iter = dsg.find() ;
+	            for ( ; iter.hasNext() ; )
+	            {
+	                Quad q = iter.next() ;
+	                Node s = q.getSubject() ;
+	                Node p = q.getPredicate() ;
+	                Node o = q.getObject() ;
+	                Node g = q.getGraph() ;
+	                
+	                String gq = null ;
+	                if ( g != null && ! Quad.isDefaultGraph(g) ) {
+	                    gq = blankNodeOrIRIString(g) ;
+	                    if ( gq == null )
+	                        throw new RiotException("Graph node is not a URI or a blank node") ;
+	                }
+	                
+	                String sq = blankNodeOrIRIString(s) ;
+	                if ( sq == null )
+	                    throw new RiotException("Subject node is not a URI or a blank node") ;
+	                
+	                String pq = p.getURI() ;
+	                if ( o.isLiteral() )
+	                {
+	                    String lex = o.getLiteralLexicalForm() ; 
+	                    String lang = o.getLiteralLanguage() ;
+	                    String dt = o.getLiteralDatatypeURI() ;
+	                    if (lang != null && lang.length() == 0)
+	                    {
+	                        lang = null ;
+	                        //dt = RDF.getURI()+"langString" ;
+	                    }
+	                    if (dt == null )
+	                        dt = XSDDatatype.XSDstring.getURI() ;
+
+	                    result.addQuad(sq, pq, lex, dt, lang, gq) ;
+	                }
+	                else
+	                {
+	                    String oq = blankNodeOrIRIString(o) ;
+	                    result.addQuad(sq, pq, oq, gq) ;
+	                }
+	            }
+	        }                
+	        else
+	            Log.warn(JenaRDF2JSONLD.class, "unknown") ;
+	        return result ;
+	    }
+
+	    private String blankNodeOrIRIString(Node x)
+	    {
+	        if ( x.isURI() ) return x.getURI() ;
+	        if ( x.isBlank() )
+	            return labels.get(null,  x) ;
+	        return null ;
+	    }
+	}
 }

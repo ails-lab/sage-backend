@@ -17,27 +17,48 @@ import java.util.Set;
 
 import org.apache.jena.query.Dataset;
 import org.apache.jena.query.DatasetFactory;
+import org.apache.jena.query.QueryExecution;
 import org.apache.jena.rdf.model.Model;
 import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.rdf.model.RDFNode;
+import org.apache.jena.rdf.model.Resource;
+import org.apache.jena.rdf.model.Statement;
+import org.apache.jena.rdf.model.StmtIterator;
 import org.apache.jena.riot.Lang;
 import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.riot.RDFFormat;
+import org.apache.jena.update.UpdateAction;
+import org.apache.jena.update.UpdateFactory;
+import org.apache.jena.update.UpdateRequest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
 
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import edu.ntua.isci.ac.common.utils.IOUtils;
+import ac.software.semantic.model.MappingDocument;
+import ac.software.semantic.model.constants.MappingType;
+import ac.software.semantic.vocs.SEMRVocabulary;
 import edu.ntua.isci.ac.d2rml.model.D2RMLModel;
 import edu.ntua.isci.ac.d2rml.parser.Parser;
+import edu.ntua.isci.ac.d2rml.vocabulary.D2RMLVocabulary;
+import edu.ntua.isci.ac.lod.vocabularies.ASVocabulary;
+import edu.ntua.isci.ac.lod.vocabularies.R2RMLVocabulary;
+import edu.ntua.isci.ac.lod.vocabularies.RDFVocabulary;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 
+@Service
 public class SerializationTransformation {
 
+	@Autowired
+	private SEMRVocabulary resourceVocabulary;
+	
 	static ObjectMapper mapper = new ObjectMapper();
 	
 	public Map<String, String> XtoJSONLD(String input) throws Exception {
@@ -339,16 +360,27 @@ public class SerializationTransformation {
 
 	public static void main(String[] args) {
 //		String path = "D:\\data\\stirdata\\d2rml\\el - business_data - content.ttl";
+//		String path = "D:\\data\\stirdata\\d2rml\\ro - business_data - content.ttl";
+		String path = "D:\\data\\crafted\\import by query - content - with key.ttl";
 //		String path = "D:\\data\\stirdata\\d2rml\\el - agencies - data.ttl";
-		String path = "D:\\data\\stirdata\\d2rml\\nutsALL - content.ttl";
-				
+//		String path = "D:\\data\\stirdata\\d2rml\\nutsALL - content.ttl";
+//		String path = "D:\\data\\stirdata\\d2rml\\no - business_data - content - main_units - update - json.ttl";
+//		String path = "D:\\data\\stirdata\\d2rml\\NACERev2 - content.ttl";				
+//		String path = "D:\\data\\stirdata\\d2rml\\no-test.ttl";
 		try
         {
-            String content = new String ( Files.readAllBytes( Paths.get(path) ) );
+            String content = new String ( Files.readAllBytes( Paths.get(path) ) ); //TTL
             String x = TTLtoX(content);
             
-//            System.out.println(x);
+            System.out.println(x);
+            
+//            Map<String, String> json = new SerializationTransformation().XtoJSONLD(x);
           
+//            org.apache.jena.query.Dataset aDataset = DatasetFactory.create();
+//			try (StringReader sr = new StringReader(x)) {
+//				RDFDataMgr.read(aDataset, sr, null, Lang.JSONLD);
+//			}
+
         } 
         catch (Exception e) 
         {
@@ -363,11 +395,11 @@ public class SerializationTransformation {
 		
 //		System.out.println("INPUT");
 //		System.out.println(ttl);
-
+		Parser.legacy(dataset.getDefaultModel());
 		Parser.expand(dataset.getDefaultModel());
 
 //		Writer sw0 = new StringWriter();
-//		RDFDataMgr.write(sw0, model, RDFFormat.TTL) ;
+//		RDFDataMgr.write(sw0, dataset, RDFFormat.TRIG) ;
 //		System.out.println(sw0);
 		
 		ObjectNode defaultGraph = modelToJson(dataset.getDefaultModel());
@@ -425,6 +457,9 @@ public class SerializationTransformation {
 			for (Iterator<JsonNode> iter = nodes.elements(); iter.hasNext(); ) {
 				ObjectNode node = (ObjectNode)iter.next();
 				
+//				System.out.println("A");
+//				System.out.println(node);
+				
 				String nodeId = node.get("@id").asText();
 				
 				Set<String> set = new HashSet<>();
@@ -433,7 +468,12 @@ public class SerializationTransformation {
 				if (nodeId.startsWith("_:")) {
 					((ObjectNode)node).remove("@id");
 				} 
-				
+
+//				System.out.println("B");
+//				System.out.println(nodeId);
+//				System.out.println(node);
+//				System.out.println(set);
+
 				if (set.isEmpty()) {
 					readyMap.put(nodeId, node);
 				} else {
@@ -476,10 +516,12 @@ public class SerializationTransformation {
 			for (Iterator<Entry<String, Object[]>> iter = idMap.entrySet().iterator(); iter.hasNext();) {
 				Entry<String, Object[]> entry = iter.next();
 				
-				
 				ObjectNode node = (ObjectNode)entry.getValue()[0];
 				
+//				System.out.println("PROCESS");
+//				System.out.println(node);				
 				boolean keep = process(node, readyMap);
+//				System.out.println(node);
 				
 				if (!keep) {
 					readyMap.put(entry.getKey(), node);
@@ -525,6 +567,7 @@ public class SerializationTransformation {
 	
 	private static void explore(ObjectNode node, Set<String> set) throws JsonParseException, JsonMappingException, IOException {
 
+//		System.out.println(node);
 		for (Iterator<String> iter2 = node.fieldNames(); iter2.hasNext(); ) {
 			String name2 = iter2.next();
 
@@ -571,6 +614,24 @@ public class SerializationTransformation {
 			String name2 = iter2.next();
 			
 			JsonNode node2 = node.get(name2);
+
+			// probably not correct <-- for cases "dris:parameter":{"@id":"_:b167"} -- replace with "dris:parameter": "_:b167"
+			if (node2.isObject()) {
+				int fcount = 0;
+				String fname = "";
+				for (Iterator<String> fiter = node2.fieldNames(); fiter.hasNext(); ) {
+					fcount++;
+					fname = fiter.next();
+				}					
+				
+				if (fcount == 1 && fname.equals("@id") && node2.get(fname).asText().startsWith("_:")) {
+					JsonNode js = readyMap.get(node2.get(fname));
+					node.replace(name2, js);
+					node2 = JsonNodeFactory.instance.textNode(node2.get(fname).asText());
+				} 
+			}
+			// probably not correct --> 
+			
 			
 			if (node2.isArray()) {
 				ArrayNode nodea = ((ArrayNode)node2);
@@ -683,15 +744,15 @@ public class SerializationTransformation {
 		return v;
 	}
 	
-	public D2RMLModel XtoD2RMLModel(String xd2rml, Map<String, Object> params) throws Exception {
+	public D2RMLModel XtoD2RMLModel(String xd2rml, String baseUri, Map<String, Object> params) throws Exception {
 		Map<String,String> graphs = XtoJSONLD(xd2rml);
-
+		
 		Dataset ds = DatasetFactory.create();
-
+		
 		try (StringReader sr = new StringReader(graphs.get(null))) {
-			RDFDataMgr.read(ds, sr, null, Lang.JSONLD);
+			RDFDataMgr.read(ds, sr, baseUri, Lang.JSONLD);
 		}
-
+		
 		for (Map.Entry<String, String> entry : graphs.entrySet()) {
 			String graph = entry.getKey();
 			if (graph != null) {
@@ -704,12 +765,17 @@ public class SerializationTransformation {
 		
 			}
 		}
-			
+		
+		//StringWriter sw = new StringWriter();
+		//RDFDataMgr.write(sw, ds.getDefaultModel(), Lang.TTL);
+		//System.out.println(sw);
+		
 		D2RMLModel res = new Parser().extractRMLMapping(ds.getDefaultModel(), params);
+		res.setParseParams(params);
+		
 		res.setDataset(ds);
 				
 		return res;
-	}
+	}	
 	
-
 }

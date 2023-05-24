@@ -1,5 +1,9 @@
 package ac.software.semantic.payload;
 
+import java.util.List;
+
+import ac.software.semantic.model.PathElement;
+
 public class DatasetProgressResponse {
     private String validationId;
     private String propertyName;
@@ -11,7 +15,14 @@ public class DatasetProgressResponse {
     private int totalAccepted;
     private int totalRejected;
     private int totalNeutral;
-
+    
+    private int annotatedPagesCount;
+    
+    private boolean active;
+    private boolean locked;
+    
+    private List<PathElement> propertyPath;
+    
     public DatasetProgressResponse() {
     }
 
@@ -94,4 +105,37 @@ public class DatasetProgressResponse {
     public void setTotalValidations(int totalValidations) {
         this.totalValidations = totalValidations;
     }
+
+	public boolean isActive() {
+		return active;
+	}
+
+	public void setActive(boolean active) {
+		this.active = active;
+	}
+
+	public List<PathElement> getPropertyPath() {
+		return propertyPath;
+	}
+
+	public void setPropertyPath(List<PathElement> propertyPath) {
+		this.propertyPath = propertyPath;
+	}
+
+	public int getAnnotatedPagesCount() {
+		return annotatedPagesCount;
+	}
+
+	public void setAnnotatedPagesCount(int annotatedPagesCount) {
+		this.annotatedPagesCount = annotatedPagesCount;
+	}
+
+	public boolean isLocked() {
+		return locked;
+	}
+
+	public void setLocked(boolean locked) {
+		this.locked = locked;
+	}
+
 }

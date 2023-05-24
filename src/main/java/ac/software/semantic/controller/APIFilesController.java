@@ -1,22 +1,20 @@
 package ac.software.semantic.controller;
 
-import java.io.BufferedInputStream;
 import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
+import java.util.stream.Collectors;
 
 import io.swagger.v3.oas.annotations.Parameter;
-import org.apache.commons.compress.compressors.bzip2.BZip2CompressorInputStream;
 import org.bson.types.ObjectId;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
@@ -29,11 +27,15 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import ac.software.semantic.config.ConfigurationContainer;
+import ac.software.semantic.model.Dataset;
 import ac.software.semantic.model.FileDocument;
 import ac.software.semantic.model.FileSystemConfiguration;
-import ac.software.semantic.model.VirtuosoConfiguration;
-import ac.software.semantic.payload.ApiResponse;
+import ac.software.semantic.model.ProcessStateContainer;
+import ac.software.semantic.model.TripleStoreConfiguration;
+import ac.software.semantic.payload.APIResponse;
 import ac.software.semantic.payload.FileResponse;
+import ac.software.semantic.repository.DatasetRepository;
 import ac.software.semantic.security.CurrentUser;
 import ac.software.semantic.security.UserPrincipal;
 import ac.software.semantic.service.FileService;
@@ -45,6 +47,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @RequestMapping("/api/files")
 public class APIFilesController {
 
+	@Autowired
+	private DatasetRepository datasetRepository;
 
 	@Autowired
 	private FileService fileService;
@@ -57,19 +61,33 @@ public class APIFilesController {
     private FileSystemConfiguration fileSystemConfiguration;
 	    
 	@Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfigurations;
-	
-    @Value("${mapping.uploaded-files.folder}")
-    private String uploadsFolder;
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
     
-//    @Autowired
-//    private ApplicationEventPublisher applicationEventPublisher;
-
     @GetMapping("/getAll")
 	public List<FileResponse> getAll(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @RequestParam("datasetId") String datasetId)  {
 
-    	return fileService.getFiles(currentUser, datasetId);
+    	List<FileDocument> files = fileService.getFiles(currentUser, datasetId);
+        
+		Optional<Dataset> datasetOpt = datasetRepository.findByIdAndUserId(new ObjectId(datasetId), new ObjectId(currentUser.getId()));
+
+		if (!datasetOpt.isPresent()) {
+			return new ArrayList<>();
+		}
+		
+		Dataset dataset = datasetOpt.get();
+		
+		ProcessStateContainer psv = dataset.getCurrentPublishState(virtuosoConfigurations.values());
+		final TripleStoreConfiguration vc;
+		if (psv != null) {
+			vc = psv.getTripleStoreConfiguration();
+		} else {
+			vc = null;
+		}
+
+    	return files.stream()
+		   .map(doc -> modelMapper.file2FileResponse(vc, dataset, doc, currentUser))
+  		   .collect(Collectors.toList());
 	}
     
 //    @GetMapping("/get/{id}")
@@ -84,38 +102,24 @@ public class APIFilesController {
 // 	}
 //	
     @DeleteMapping("/delete/{id}")
-    public ResponseEntity<?> deleteFile(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+    public ResponseEntity<?> delete(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
 
     	boolean deleted = fileService.deleteFile(currentUser, id);
 		
     	if (deleted) {
-    		return ResponseEntity.ok(new ApiResponse(true, "Resource deleted"));
+    		return ResponseEntity.ok(new APIResponse(true, "Resource deleted"));
     	} else {
     		return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
     	}
 	}
-    
  
 
-//    @PostMapping("/update/{id}")
-//	public ResponseEntity<?> updateD2RMLEntry(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam("name") Optional<String> name, @RequestBody String d2rml)  {
-//
-//    	boolean updated = mappingsService.updateMapping(currentUser, id, name, d2rml);
-//		
-////    	if (updated) {
-//    		return ResponseEntity.ok(new ApiResponse(true, "Document updated"));
-////    	} else {
-////    		return ResponseEntity.
-////    	}
-//	}
-
-
-    @GetMapping(value = "/view/{id}",
-            produces = "text/plain")
-	public ResponseEntity<?> lastExecution(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+    @GetMapping(value = "/preview-last/{id}",
+                produces = "text/plain")
+	public ResponseEntity<?> previewLast(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
 	
 		try {
-			Optional<String> ttl = fileService.getContent(currentUser, id);
+			Optional<String> ttl = fileService.previewLast(currentUser, id);
 			if (ttl.isPresent()) {
 				return ResponseEntity.ok(ttl.get());
 			} else {
@@ -125,21 +129,113 @@ public class APIFilesController {
 			e.printStackTrace();
 			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
 		}
-		
 	}	     
+    
+    @GetMapping(value = "/preview-published/{id}",
+            produces = "text/plain")
+	public ResponseEntity<?> previewPublished(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+	
+		try {
+			Optional<String> ttl = fileService.previewPublished(currentUser, id);
+			if (ttl.isPresent()) {
+				return ResponseEntity.ok(ttl.get());
+			} else {
+				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			return new ResponseEntity<>(HttpStatus.INTERNAL_SERVER_ERROR);
+		}
+	}	
+    
+    @GetMapping(value = "/download-last/{id}")
+ 	public ResponseEntity<?> downloadLast(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
+ 	
+ 		try {
+ 			Optional<String> zip = fileService.downloadLast(currentUser, id);
+ 			
+ 			if (zip.isPresent()) {
+ 				String file = zip.get();
+ 				Path path = Paths.get(file);
+ 				File ffile = new File(file);
+ 		      	
+ 			    ByteArrayResource resource = new ByteArrayResource(Files.readAllBytes(path));
 
+ 			    HttpHeaders headers = new HttpHeaders();
+ 			    headers.add(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, HttpHeaders.CONTENT_DISPOSITION);
+ 			    headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + ffile.getName());
+ 			    		
+ 			    return ResponseEntity.ok()
+ 			            .headers(headers)
+ 			            .contentLength(ffile.length())
+ 			            .contentType(MediaType.APPLICATION_OCTET_STREAM)
+ 			            .body(resource);
+
+ 			} else {
+ 				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+ 			}
+ 		} catch (Exception e) {
+ 			e.printStackTrace();
+ 			return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+ 		}
+ 	}        
+    
+    @GetMapping(value = "/download-published/{id}")
+	public ResponseEntity<?> downloadPublished(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @PathVariable("id") String id) {
+		try {
+			Optional<String> zip = fileService.downloadPublished(currentUser, id);
+			
+			if (zip.isPresent()) {
+				String file = zip.get();
+				Path path = Paths.get(file);
+				File ffile = new File(file);
+		      	
+			    ByteArrayResource resource = new ByteArrayResource(Files.readAllBytes(path));
+
+			    HttpHeaders headers = new HttpHeaders();
+			    headers.add(HttpHeaders.ACCESS_CONTROL_EXPOSE_HEADERS, HttpHeaders.CONTENT_DISPOSITION);
+			    headers.add(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=" + ffile.getName());
+			    		
+			    return ResponseEntity.ok()
+			            .headers(headers)
+			            .contentLength(ffile.length())
+			            .contentType(MediaType.APPLICATION_OCTET_STREAM)
+			            .body(resource);
+
+			} else {
+				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
+			}
+		} catch (Exception e) {
+			e.printStackTrace();
+			return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
+		}
+	}         
     
     @PostMapping(value = "/create",
 		         consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
 		         produces = "application/json")
-	public ResponseEntity<?> file(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @RequestParam("name") String name, @RequestParam("datasetId") String datasetId, @RequestParam MultipartFile file)  {
+	public ResponseEntity<?> create(@Parameter(hidden = true) @CurrentUser UserPrincipal currentUser, @RequestParam("name") String name, @RequestParam("datasetId") String datasetId, @RequestParam MultipartFile file)  {
 	
 		try {
-			FileDocument doc = fileService.create(currentUser, name, datasetId, file.getOriginalFilename());
-			
-			saveUploadedFile(currentUser, doc, file);
+			FileDocument fd = fileService.create(currentUser, name, datasetId, file);
 
-			return ResponseEntity.ok(modelMapper.file2FileResponse(virtuosoConfigurations.values(), doc, currentUser));
+			Optional<Dataset> datasetOpt = datasetRepository.findByIdAndUserId(new ObjectId(datasetId), new ObjectId(currentUser.getId()));
+
+			if (!datasetOpt.isPresent()) {
+				return new ResponseEntity<>(HttpStatus.NOT_FOUND);
+			}
+			
+			Dataset dataset = datasetOpt.get();
+			
+			ProcessStateContainer psv = dataset.getCurrentPublishState(virtuosoConfigurations.values());
+			final TripleStoreConfiguration vc;
+			if (psv != null) {
+				vc = psv.getTripleStoreConfiguration();
+			} else {
+				vc = null;
+			}
+			
+			return ResponseEntity.ok(modelMapper.file2FileResponse(vc, dataset, fd, currentUser));
 			
 		} catch (Exception ex) {
 			ex.printStackTrace();
@@ -149,67 +245,33 @@ public class APIFilesController {
 		
 	}
 		
-    private void saveUploadedFile(UserPrincipal currentUser, FileDocument doc, MultipartFile file) throws IllegalStateException, IOException {
-		File folder = new File(fileSystemConfiguration.getUserDataFolder(currentUser) + uploadsFolder, doc.getId().toString());
-		if (!folder.exists()) {
-			folder.mkdir();
-		} else {
-			for (File ff : folder.listFiles()) {
-				ff.delete();
-			}
-		}
-
-		File newFile = new File(folder, file.getOriginalFilename());
-		file.transferTo(newFile);
-		if (newFile.getName().endsWith(".zip")) {
-	        byte[] buffer = new byte[2048];
-	        try (ZipInputStream zis = new ZipInputStream(new FileInputStream(newFile))) {
-		        ZipEntry zipEntry = zis.getNextEntry();
-		        while (zipEntry != null) {
-		        	File destFile = new File(folder, zipEntry.getName());
-		            
-		        	try (FileOutputStream fos = new FileOutputStream(destFile)) {
-			            int len;
-			            while ((len = zis.read(buffer)) > 0) {
-			                fos.write(buffer, 0, len);
-			            }
-		        	}
-		            zipEntry = zis.getNextEntry();
-		        }
-		        zis.closeEntry();
-	        }
-	        newFile.delete();
-	    } else	if (newFile.getName().endsWith(".bz2")) {
-	    	byte[] buffer = new byte[2048];
-	        try (BZip2CompressorInputStream input = new BZip2CompressorInputStream(new BufferedInputStream(new FileInputStream(newFile)))) {
-	        	File destFile = new File(folder, newFile.getName().substring(0, newFile.getName().length()-4));
-
-       		try (FileOutputStream fos = new FileOutputStream(destFile)) {
-       			int len;
-	            
-       			while ((len = input.read(buffer)) > 0) {
-       				fos.write(buffer, 0, len);
-		            }
-	        	}
-	        }
-	        newFile.delete();
-	    }
-
-    }
-    
     @PostMapping(value = "/update/{id}",
 	         consumes = MediaType.MULTIPART_FORM_DATA_VALUE,
 	         produces = "application/json")
 	public ResponseEntity<?> update(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id, @RequestParam String name, @RequestParam Optional<MultipartFile> file)  {
 	
+    	
 		try {
-			FileDocument doc = fileService.update(currentUser, new ObjectId(id), name, file.isPresent() ? file.get().getOriginalFilename() : null);
-			
-			if (file.isPresent()) {
-				saveUploadedFile(currentUser, doc, file.get());
+			FileDocument fd = fileService.update(currentUser, new ObjectId(id), name, file.isPresent() ? file.get() : null);
+
+			Optional<Dataset> datasetOpt = datasetRepository.findByIdAndUserId(fd.getDatasetId(), new ObjectId(currentUser.getId()));
+
+			if (!datasetOpt.isPresent()) {
+				return new ResponseEntity<>(HttpStatus.NOT_FOUND);
 			}
 			
-			return ResponseEntity.ok(modelMapper.file2FileResponse(virtuosoConfigurations.values(), doc, currentUser));
+			Dataset dataset = datasetOpt.get();
+			
+			ProcessStateContainer psv = dataset.getCurrentPublishState(virtuosoConfigurations.values());
+			final TripleStoreConfiguration vc;
+			if (psv != null) {
+				vc = psv.getTripleStoreConfiguration();
+			} else {
+				vc = null;
+			}
+
+			
+			return ResponseEntity.ok(modelMapper.file2FileResponse(vc, dataset, fd, currentUser));
 			
 		} catch (Exception ex) {
 			ex.printStackTrace();
@@ -218,28 +280,5 @@ public class APIFilesController {
 		}
 		
 	}
-
-
-     
-//     @RequestMapping(value = "/download/{id}",
-//                     produces = "text/plain")
-//	public ResponseEntity<?> downloadMapping(@CurrentUser UserPrincipal currentUser, @PathVariable("id") String id)  {
-//		
-////    	 System.out.println("TTT " + currentUser);
-//		try {
-//			String ttl = mappingsService.downloadMapping(currentUser, id);
-//			System.out.println(ttl);
-//			if (ttl != null) {
-//				return ResponseEntity.ok(ttl);
-//			} else {
-//				return new ResponseEntity<>(HttpStatus.NO_CONTENT);
-//			}
-//		} catch (Exception e) {
-//			e.printStackTrace();
-//			return new ResponseEntity<>(HttpStatus.BAD_REQUEST);
-//		}
-//
-//	}	 
-     
 
 }

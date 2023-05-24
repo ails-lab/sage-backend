@@ -6,18 +6,19 @@
 @prefix oa: <http://www.w3.org/ns/oa#> .
 @prefix as: <https://www.w3.org/ns/activitystreams#> .
 @prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix foaf:	<http://xmlns.com/foaf/0.1/> .
 
 @prefix dr:   <http://islab.ntua.gr/ns/d2rml#> .
 @prefix op:  <http://islab.ntua.gr/ns/d2rml-op#> .
 @prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
 
-@prefix collection:    <http://sw.islab.ntua.gr/semaspace/resource/annotation/> .
+@prefix collection: <{##ppRESOURCE_PREFIX##}>
 
 <#SPARQLService>
    a is:SPARQLService ;
    is:uri "{@@iirdfsource@@}" .
    
-<#EnrichMapping>  
+<#ValidateMapping>  
    a  <http://islab.ntua.gr/ns/d2rml#PrimaryTriplesMap> ;
    rr:logicalTable [ 
       dr:source <#SPARQLService> ;
@@ -33,6 +34,16 @@
          is:name "iivalue" ;
       ]) ;
    ] ;
+   
+   dr:definedColumn [
+      dr:name "SCOPE";
+      dr:function op:identity ;
+      dr:parameterBinding [ 
+         dr:parameter "input" ;
+         rr:constant "{@@scope@@}" ;
+      ] ;
+   ] ;
+   
    rr:subjectMap [ 
       dr:definedColumns ( [
          dr:name "UUID" ;
@@ -41,13 +52,7 @@
       rr:template  "{@collection}{UUID}" ;
       rr:class oa:Annotation ;
    ] ;
-   rr:predicateObjectMap [ 
-      rr:predicate as:generator ;
-      rr:objectMap [
-         rr:constant "{@@iiannotator@@}" ; 
-         rr:termType rr:IRI ;
-      ] ;
-   ] ;
+   
    rr:predicateObjectMap [ 
       rr:predicate dcterms:created ;
       rr:objectMap [
@@ -60,6 +65,7 @@
          rr:termType rr:Literal ;
       ]
    ] ;
+   
    rr:predicateObjectMap [ 
       rr:predicate  <http://sw.islab.ntua.gr/annotation/score> ;
 	  rr:objectMap [
@@ -67,6 +73,7 @@
          rr:datatype xsd:double ;
       ] ;
    ] ;       
+   
    rr:predicateObjectMap [ 
       rr:predicate oa:hasTarget ;
       rr:objectMap  [ 
@@ -105,6 +112,7 @@
 		 rr:termType rr:IRI ;
       ] ;
    ] ;
+   
    rr:predicateObjectMap [ 
       rr:predicate  <http://sw.islab.ntua.gr/annotation/hasValidation> ;
       rr:objectMap [
@@ -121,9 +129,39 @@
 	         ] ;
 	         rr:predicateObjectMap [ 
 	            rr:predicate <http://sw.islab.ntua.gr/annotation/action> ;
-	            rr:object <http://sw.islab.ntua.gr/annotation/Add> ; 
+                rr:objectMap [
+	               rr:constant "{@@action@@}" ; 
+	               rr:termType rr:IRI ;
+	            ] ;
 	         ] ;
+	         rr:predicateObjectMap [ 
+	            rr:predicate oa:hasScope ;
+	            rr:objectMap [
+	               rr:column "SCOPE" ; 
+	               rr:termType rr:IRI ;
+	            ] ;
+	         ] ;	         
 	      ] ;
 	   ] ;
-   ] .   
+  ] ;
+
+   rr:predicateObjectMap [ 
+      rr:predicate as:generator ;
+      rr:objectMap [
+         rr:constant "{@@iiannotator@@}" ; 
+         rr:termType rr:IRI ;
+      ] ;
+   ] .
+   
+#   rr:predicateObjectMap [ 
+#      rr:predicate dcterms:creator ;
+#      rr:objectMap [
+#         rr:parentTriplesMap [
+#	         rr:subjectMap [ 
+#	            rr:termType rr:BlankNode ;
+#	            rr:class foaf:Person;
+#	         ] ;
+#	     ] ;
+#      ] ;
+#   ] ;    
 

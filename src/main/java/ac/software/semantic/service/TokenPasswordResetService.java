@@ -1,9 +1,11 @@
 package ac.software.semantic.service;
 
+import ac.software.semantic.model.Database;
 import ac.software.semantic.model.TokenPasswordReset;
 import ac.software.semantic.model.User;
 import ac.software.semantic.repository.TokenPasswordResetRepository;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -22,14 +24,20 @@ public class TokenPasswordResetService {
     @Autowired
     private JavaMailSender javaMailSender;
 
+    @Autowired
+    @Qualifier("database")
+	private Database database;
+    
     @Value("${resetTokenExpiration}")
     private int resetPasswordTokenExpiration;
 
-    @Value("app.mode")
-    private String applicationDeployMode;
+//    @Value("app.mode")
+//    private String applicationDeployMode;
+    @Value("${backend.server}")
+    private String server;
 
     private Date calculateExpiryDate() {
-        System.out.println(resetPasswordTokenExpiration);
+//        System.out.println(resetPasswordTokenExpiration);
         final Calendar cal = Calendar.getInstance();
         cal.setTimeInMillis(new Date().getTime());
         cal.add(Calendar.MINUTE, resetPasswordTokenExpiration);
@@ -49,20 +57,22 @@ public class TokenPasswordResetService {
         message.setFrom("sage-do-not-reply@ails.ece.ntua.gr");
         message.setTo(user.getEmail());
         message.setSubject("SAGE Account Password Recovery");
-        String url = "";
-        if (applicationDeployMode == "development") {
-            url = "https://europeana-semantic-dev.ails.ece.ntua.gr/";
-        }
-        else {
-            url = "https://europeana-semantic.ails.ece.ntua.gr/";
-        }
-        message.setText("Hello from SAGE Europeana,\n" +
+//        String url = "";
+//        if (applicationDeployMode == "development") {
+//            url = "https://europeana-semantic-dev.ails.ece.ntua.gr/";
+//        }
+//        else {
+//            url = "https://europeana-semantic.ails.ece.ntua.gr/";
+//        }
+        String url = server + "/";
+        message.setText("Hello from SAGE " + database.getLabel() + ",\n" +
                         "It seems that you asked for a password reset.\n" +
                         "Use the following link to reset your password:\n\n" +
                         url + "resetPassword?token="+token+"\n\n" +
                         "If it wasn't you, ignore this message.\n" +
                         "Please do not reply to this address.\n\n" +
                         "SAGE Platform\n");
+        
         javaMailSender.send(message);
     }
 }

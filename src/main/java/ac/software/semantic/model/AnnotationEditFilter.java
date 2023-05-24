@@ -2,6 +2,8 @@ package ac.software.semantic.model;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
+import ac.software.semantic.model.constants.FilterValidationType;
+
 public class AnnotationEditFilter {
 
 	private FilterValidationType action;

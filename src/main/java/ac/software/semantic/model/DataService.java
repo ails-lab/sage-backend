@@ -9,7 +9,8 @@ import org.springframework.data.mongodb.core.mapping.Document;
 public class DataService {
 
 	public enum DataServiceType {
-		ANNOTATOR
+		ANNOTATOR, 
+		EMBEDDER
 	}
 	
 	private ObjectId id;
@@ -24,6 +25,8 @@ public class DataService {
 	private String description;
 
 	private DataServiceType type;
+	
+	private String uri;
 	
 	public DataService(String identifier, String title, List<DataServiceParameter> parameters, List<String> asProperties, List<DataServiceVariant> variants) {
 		this.identifier = identifier;
@@ -103,6 +106,14 @@ public class DataService {
 
 	public void setParameters(List<DataServiceParameter> parameters) {
 		this.parameters = parameters;
+	}
+
+	public String getUri() {
+		return uri;
+	}
+
+	public void setUri(String uri) {
+		this.uri = uri;
 	}
 
 	

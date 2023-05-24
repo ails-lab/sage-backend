@@ -30,7 +30,7 @@ import org.springframework.messaging.handler.annotation.Header;
 
 import com.jcraft.jsch.ChannelSftp.LsEntry;
 
-import ac.software.semantic.model.VirtuosoConfiguration;
+import ac.software.semantic.model.TripleStoreConfiguration;
 
 @Configuration
 public class SFTPAdaptor {
@@ -38,20 +38,20 @@ public class SFTPAdaptor {
 	private final static Logger logger = LoggerFactory.getLogger(SFTPAdaptor.class);
 
 	@Autowired
-	@Qualifier("virtuoso-configuration")
-	private Map<String, VirtuosoConfiguration> virtuosoConfigurations;
+	@Qualifier("triplestore-configurations")
+	private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
 
 	@Autowired
 	private ApplicationContext ac;
 
 	@Bean
-	public Map<VirtuosoConfiguration, SessionFactory<LsEntry>> sftpSessionFactory() {
-		Map<VirtuosoConfiguration, SessionFactory<LsEntry>> res = new HashMap<>();
+	public Map<TripleStoreConfiguration, SessionFactory<LsEntry>> sftpSessionFactory() {
+		Map<TripleStoreConfiguration, SessionFactory<LsEntry>> res = new HashMap<>();
 
-		for (VirtuosoConfiguration vc : virtuosoConfigurations.values()) {
-			DefaultSftpSessionFactory factory = new DefaultSftpSessionFactory(true);
+		for (TripleStoreConfiguration vc : virtuosoConfigurations.values()) {
+			if (!vc.isLocalImport() && vc.getFileServer() != null) {
+				DefaultSftpSessionFactory factory = new DefaultSftpSessionFactory(true);
 
-			if (vc.getFileServer() != null) {
 				factory.setHost(vc.getFileServer());
 				factory.setUser(vc.getSftpUsername());
 				factory.setPassword(vc.getSftpPassword());
@@ -67,9 +67,9 @@ public class SFTPAdaptor {
 
 	@Bean(name = "upload-message-handler")
 	@Scope("prototype")
-	public MessageHandler uploadMessageHandler(VirtuosoConfiguration vc) {
+	public MessageHandler uploadMessageHandler(TripleStoreConfiguration vc) {
 
-		Map<VirtuosoConfiguration, SessionFactory<LsEntry>> vcFactories = sftpSessionFactory();
+		Map<TripleStoreConfiguration, SessionFactory<LsEntry>> vcFactories = sftpSessionFactory();
 		SftpMessageHandler handler = new SftpMessageHandler(vcFactories.get(vc));
 
 		handler.setRemoteDirectoryExpression(new LiteralExpression(vc.getUploadFolder()));
@@ -90,16 +90,16 @@ public class SFTPAdaptor {
 
 	@Bean(name = "delete-message-handler")
 	@Scope("prototype")
-	public MessageHandler deleteMessageHandler(VirtuosoConfiguration vc) {
+	public MessageHandler deleteMessageHandler(TripleStoreConfiguration vc) {
 
-		Map<VirtuosoConfiguration, SessionFactory<LsEntry>> vcFactories = sftpSessionFactory();
+		Map<TripleStoreConfiguration, SessionFactory<LsEntry>> vcFactories = sftpSessionFactory();
 
 		return new SftpOutboundGateway(vcFactories.get(vc), Command.RM.getCommand(), "'" + vc.getUploadFolder() + "/' + payload");
 	}
 
 	@ServiceActivator(inputChannel = "sftp.file.upload.request.channel")
 	public void uploadHandler(Message<File> msg) {
-		VirtuosoConfiguration vc = (VirtuosoConfiguration) msg.getHeaders().get("vc");
+		TripleStoreConfiguration vc = (TripleStoreConfiguration) msg.getHeaders().get("vc");
 
 		SftpMessageHandler handler = (SftpMessageHandler) ac.getBean("upload-message-handler", vc);
 		
@@ -110,7 +110,7 @@ public class SFTPAdaptor {
 
 	@ServiceActivator(inputChannel = "sftp.file.delete.request.channel")
 	public void deleteHandler(Message<String> msg) {
-		VirtuosoConfiguration vc = (VirtuosoConfiguration) msg.getHeaders().get("vc");
+		TripleStoreConfiguration vc = (TripleStoreConfiguration) msg.getHeaders().get("vc");
 
 		SftpOutboundGateway handler = (SftpOutboundGateway) ac.getBean("delete-message-handler", vc);
 		
@@ -123,14 +123,14 @@ public class SFTPAdaptor {
 	public interface SftpUploadGateway {
 
 		@Gateway(requestChannel = "sftp.file.upload.request.channel")
-		void upload(File file, @Header("vc") VirtuosoConfiguration vc);
+		void upload(File file, @Header("vc") TripleStoreConfiguration vc);
 	}
 
 	@MessagingGateway 
 	public interface SftpDeleteGateway {
 
 		@Gateway(requestChannel = "sftp.file.delete.request.channel")
-		CompletableFuture<Message<Boolean>> deleteFile(String file, @Header("vc") VirtuosoConfiguration vc);
+		CompletableFuture<Message<Boolean>> deleteFile(String file, @Header("vc") TripleStoreConfiguration vc);
 	}
 
 }

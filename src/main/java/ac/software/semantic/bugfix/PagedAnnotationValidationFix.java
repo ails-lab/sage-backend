@@ -28,15 +28,19 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import ac.software.semantic.config.ConfigurationContainer;
 import ac.software.semantic.controller.APIAnnotationEditGroupController.AnnotationValidationRequest;
 import ac.software.semantic.model.AnnotationEdit;
 import ac.software.semantic.model.AnnotationEditGroup;
 import ac.software.semantic.model.AnnotationEditValue;
+import ac.software.semantic.model.Database;
 import ac.software.semantic.model.Dataset;
+import ac.software.semantic.model.DatasetCatalog;
 import ac.software.semantic.model.FileSystemConfiguration;
 import ac.software.semantic.model.PagedAnnotationValidation;
 import ac.software.semantic.model.PagedAnnotationValidationPage;
-import ac.software.semantic.model.VirtuosoConfiguration;
+import ac.software.semantic.model.PathElement;
+import ac.software.semantic.model.TripleStoreConfiguration;
 import ac.software.semantic.payload.ValueAnnotation;
 import ac.software.semantic.payload.ValueAnnotationDetail;
 import ac.software.semantic.repository.AnnotationEditGroupRepository;
@@ -44,28 +48,44 @@ import ac.software.semantic.repository.AnnotationEditRepository;
 import ac.software.semantic.repository.AnnotatorDocumentRepository;
 import ac.software.semantic.repository.DatasetRepository;
 import ac.software.semantic.repository.PagedAnnotationValidationRepository;
-import ac.software.semantic.repository.PagedAnnotationValidationRepositoryPage;
+import ac.software.semantic.repository.PagedAnnotationValidationPageRepository;
+import ac.software.semantic.service.AnnotationEditGroupService;
 import ac.software.semantic.service.PagedAnnotationValidationService;
+import ac.software.semantic.service.SchemaService;
 import ac.software.semantic.service.ValueCount;
 import edu.ntua.isci.ac.d2rml.model.Utils;
 import edu.ntua.isci.ac.lod.vocabularies.OAVocabulary;
 import edu.ntua.isci.ac.lod.vocabularies.OWLTime;
-import edu.ntua.isci.ac.lod.vocabularies.sema.SEMAVocabulary;
-import edu.ntua.isci.ac.lod.vocabularies.sema.SOAVocabulary;
+import ac.software.semantic.vocs.LegacyVocabulary;
+import ac.software.semantic.vocs.SEMRVocabulary;
+import ac.software.semantic.vocs.SOAVocabulary;
 
 @Service
 public class PagedAnnotationValidationFix {
 
+    @Autowired
+    @Qualifier("database")
+    private Database database;
+    
 	@Value("${annotation.validation.paged.page-size}")
 	private int pageSize;
 			
 	@Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfigurations;
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
 
     @Autowired
     @Qualifier("filesystem-configuration")
     private FileSystemConfiguration fileSystemConfiguration;
+
+	@Autowired
+	private SEMRVocabulary resourceVocabulary;
+	
+	@Autowired
+	private LegacyVocabulary legacyVocabulary;
+
+	@Autowired
+	private SchemaService schemaService;
 
 	@Autowired
 	AnnotatorDocumentRepository annotatorDocumentRepository;
@@ -77,7 +97,7 @@ public class PagedAnnotationValidationFix {
 	PagedAnnotationValidationRepository pavRepository;
 
 	@Autowired
-	PagedAnnotationValidationRepositoryPage pavpRepository;
+	PagedAnnotationValidationPageRepository pavpRepository;
 	
 	@Autowired
 	AnnotationEditRepository annotationEditRepository;
@@ -85,6 +105,9 @@ public class PagedAnnotationValidationFix {
 	@Autowired
 	PagedAnnotationValidationService pavService;
 
+	@Autowired
+	AnnotationEditGroupService aegService;
+	
 	@Autowired
 	DatasetRepository datasetRepository;
 	
@@ -102,7 +125,7 @@ public class PagedAnnotationValidationFix {
 			PagedAnnotationValidation newPav = pavs.get(i)[1];
 
 			Dataset dataset = datasetRepository.findByUuid(oldPav.getDatasetUuid()).get();
-			System.out.println("UPDATING " + dataset.getName() + " / " + oldPav.getOnPropertyAsString() + " " + oldPav.getAsProperty());
+			System.out.println("UPDATING " + dataset.getName() + " / " + PathElement.onPathStringListAsSPARQLString(oldPav.getOnProperty()) + " " + oldPav.getAsProperty());
 
 			oldPav.setAnnotatedPagesCount(newPav.getAnnotatedPagesCount());
 			oldPav.setAnnotationsCount(newPav.getAnnotationsCount());
@@ -201,7 +224,7 @@ public class PagedAnnotationValidationFix {
 			}
 			
 			if (change) {
-				System.out.println("NEEDS FIX: " + dataset.getName() + " : " + pav.getOnPropertyAsString() + " " + pav.getAsProperty() + " : " + pav.getAnnotatedPagesCount() + "/" + pav2.getAnnotatedPagesCount() + " " + pav.getNonAnnotatedPagesCount() + "/" + pav2.getNonAnnotatedPagesCount() + " " + pav.getAnnotationsCount() +"/" + pav2.getAnnotationsCount());
+				System.out.println("NEEDS FIX: " + dataset.getName() + " : " + pav.getOnProperty() + " " + pav.getAsProperty() + " : " + pav.getAnnotatedPagesCount() + "/" + pav2.getAnnotatedPagesCount() + " " + pav.getNonAnnotatedPagesCount() + "/" + pav2.getNonAnnotatedPagesCount() + " " + pav.getAnnotationsCount() +"/" + pav2.getAnnotationsCount());
 
 				pavList.add(new PagedAnnotationValidation[] { pav, pav2 });
 			}
@@ -219,10 +242,10 @@ public class PagedAnnotationValidationFix {
 		try {
 			AnnotationEditGroup aeg = aegOpt.get();
 			ac.software.semantic.model.Dataset ds = datasetRepository.findByUuid(aeg.getDatasetUuid()).get();
-			VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+			TripleStoreConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
 
 			List<String> annotatorUuids = annotatorDocumentRepository.findByAnnotatorEditGroupId(aeg.getId()).stream().map(adoc -> adoc.getUuid()).collect(Collectors.toList());
-			String annfilter = AnnotationEditGroup.annotatorFilter("v", annotatorUuids);
+			String annfilter = aegService.annotatorFilter("v", annotatorUuids);
 			
 			if (!withAnns) {
 				annfilter = "";
@@ -232,13 +255,14 @@ public class PagedAnnotationValidationFix {
 			pav.setUserId(userId);
 			pav.setAnnotationEditGroupId(aeg.getId());
 			pav.setDatasetUuid(aeg.getDatasetUuid());
+			pav.setDatabaseId(database.getId());
 			pav.setOnProperty(aeg.getOnProperty());
 			pav.setAsProperty(aeg.getAsProperty());
 			pav.setAnnotatorDocumentUuid(annotatorUuids);
 			pav.setComplete(false);
 	
-			String datasetUri = SEMAVocabulary.getDataset(aeg.getDatasetUuid()).toString();
-			String spath = aeg.getOnPropertyAsString();
+			String datasetUri = resourceVocabulary.getDatasetAsResource(aeg.getDatasetUuid()).toString();
+			String spath = PathElement.onPathStringListAsSPARQLString(aeg.getOnProperty());
 	
 //			logger.info("Starting paged annotation validation " + aeg.getDatasetUuid() + "/" + aeg.getAsProperty() + "/" + aeg.getOnProperty() + ".");
 			
@@ -346,14 +370,17 @@ public class PagedAnnotationValidationFix {
 	}	
 	
 	public PagedAnnotationValidationPage viewTMP(PagedAnnotationValidation pav, AnnotationValidationRequest mode, int page, Set<String> editIds) {
-		String datasetUri = SEMAVocabulary.getDataset(pav.getDatasetUuid()).toString();
-		String onPropertyString = pav.getOnPropertyAsString();
-		String annfilter = AnnotationEditGroup.annotatorFilter("v", pav.getAnnotatorDocumentUuid());
+		String datasetUri = resourceVocabulary.getDatasetAsResource(pav.getDatasetUuid()).toString();
+		DatasetCatalog dcg = schemaService.asCatalog(pav.getDatasetUuid());
+		String fromClause = schemaService.buildFromClause(dcg);
+
+		String onPropertyString = PathElement.onPathStringListAsSPARQLString(pav.getOnProperty());
+		String annfilter = aegService.annotatorFilter("v", pav.getAnnotatorDocumentUuid());
 
 		ac.software.semantic.model.Dataset ds = datasetRepository.findByUuid(pav.getDatasetUuid()).get();
-		VirtuosoConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
+		TripleStoreConfiguration vc = ds.getPublishVirtuosoConfiguration(virtuosoConfigurations.values());
 
-		List<ValueCount> values = pavService.getValuesForPage(vc, datasetUri, onPropertyString, pav.getAsProperty(), pav.getAnnotatorDocumentUuid(), mode, page);
+		List<ValueCount> values = pavService.getValuesForPage(vc, datasetUri, pav.getMode(), onPropertyString, pav.getAsProperty(), pav.getAnnotatorDocumentUuid(), mode, page, fromClause);
 		
 
     	Map<RDFNode, Integer> countMap = new HashMap<>();
@@ -394,15 +421,16 @@ public class PagedAnnotationValidationFix {
 		    " a <" + OWLTime.DateTimeInterval + "> ; " + 
 		    " <" + OWLTime.intervalStartedBy + ">|<" + OWLTime.hasBeginning + "> ?t ; " + 
 		    " <" + OWLTime.intervalFinishedBy + ">|<" + OWLTime.hasEnd + "> ?ie ]  }  " + 
-		    " OPTIONAL { ?r <" + SOAVocabulary.start + "> ?start }  " + 
-		    " OPTIONAL { ?r <" + SOAVocabulary.end + "> ?end } } ";
+		    " OPTIONAL { ?r <" + legacyVocabulary.fixLegacy(OAVocabulary.start) + "> ?start }  " + 
+		    " OPTIONAL { ?r <" + legacyVocabulary.fixLegacy(OAVocabulary.end) + "> ?end } } ";
 		    		
 		if (mode == ANNOTATED_ONLY) {
 			sparql = 
-					"SELECT distinct ?value ?t ?ie ?start ?end  (count(*) AS ?count)" + 
+					"SELECT distinct ?value ?t ?ie ?start ?end  (count(*) AS ?count)" +
+					fromClause + 
+					"FROM NAMED <" + pav.getAsProperty() + "> " +
 		            "WHERE { " + 
-					"  GRAPH <" + datasetUri + "> { " + 
-		            "    ?s " + onPropertyString + " ?value }  " + 
+		            "  ?s " + onPropertyString + " ?value  " + 
                        graph +  
                     "  VALUES ?value { " + valueString  + " } " +                       
 		            "} " + 
@@ -410,10 +438,11 @@ public class PagedAnnotationValidationFix {
 					"ORDER BY DESC(?count) ?value ?start ?end";
 		} else if (mode == UNANNOTATED_ONLY) {
 			sparql = 
-					"SELECT distinct ?value (count(*) AS ?count) " + 
+					"SELECT distinct ?value (count(*) AS ?count) " +
+					fromClause + 
+					"FROM NAMED <" + pav.getAsProperty() + "> " +
 			        "WHERE { " + 
-		            "  GRAPH <" + datasetUri + "> { " + 
-					"    ?s " + onPropertyString + " ?value }  " + 
+					"  ?s " + onPropertyString + " ?value " + 
 		            "  FILTER NOT EXISTS { " + 
 					"    GRAPH <" + pav.getAsProperty() + "> { " + 
 					"      ?v a <" + OAVocabulary.Annotation + "> ; " + 
@@ -448,8 +477,8 @@ public class PagedAnnotationValidationFix {
 					RDFNode value = sol.get("value");
 					
 					String ann = sol.get("t") != null ? sol.get("t").toString() : null;
-					int start = sol.get("start") != null ? sol.get("start").asLiteral().getInt() : -1;
-					int end = sol.get("end") != null ? sol.get("end").asLiteral().getInt() : -1;
+					Integer start = sol.get("start") != null ? sol.get("start").asLiteral().getInt() : null;
+					Integer end = sol.get("end") != null ? sol.get("end").asLiteral().getInt() : null;
 	//				int count = sol.get("count").asLiteral().getInt();
 	//				
 	//				if (ann != null) {

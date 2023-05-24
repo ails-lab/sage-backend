@@ -4,11 +4,12 @@ import java.sql.SQLException;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import ac.software.semantic.config.ConfigurationContainer;
 import ac.software.semantic.controller.APIUserController;
 import ac.software.semantic.model.*;
+import ac.software.semantic.model.constants.UserRoleType;
 import ac.software.semantic.payload.ChangeUserDetailsRequest;
-import ac.software.semantic.payload.UserDetails;
-import ac.software.semantic.repository.AccessRepository;
+import ac.software.semantic.repository.UserRoleRepository;
 import ac.software.semantic.repository.TokenPasswordResetRepository;
 
 import org.apache.jena.query.QueryExecution;
@@ -26,12 +27,10 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
-import ac.software.semantic.payload.EditorItem;
+//import ac.software.semantic.payload.EditorItem;
 import ac.software.semantic.payload.NewUserSummary;
 import ac.software.semantic.repository.UserRepository;
-import edu.ntua.isci.ac.lod.vocabularies.sema.SEMAVocabulary;
-
-import org.springframework.beans.factory.annotation.Value;
+import ac.software.semantic.vocs.SEMRVocabulary;
 
 @Service
 public class UserService {
@@ -45,29 +44,29 @@ public class UserService {
 	private PasswordEncoder passwordEncoder;
 
 	@Autowired
-	private DatabaseService databaseService;
-
-	@Autowired
-	private AccessRepository accessRepository;
+	private UserRoleRepository roleRepository;
 
 	@Autowired
 	TokenPasswordResetRepository tokenPasswordResetRepository;
 
 	@Autowired
-	VirtuosoJDBC virtuosoJDBC;
+	TripleStore tripleStore;
+	
+	@Autowired
+	private SEMRVocabulary resourceVocabulary;
 	
     @Autowired
     @Qualifier("database")
     private Database database;
 
-	@Value("${database.name}")
-	private String databaseName;
+//	@Value("${database.name}")
+//	private String databaseName;
 	
 	@Autowired
-    @Qualifier("virtuoso-configuration")
-    private Map<String,VirtuosoConfiguration> virtuosoConfigurations;
+    @Qualifier("triplestore-configurations")
+    private ConfigurationContainer<TripleStoreConfiguration> virtuosoConfigurations;
 	
-	public NewUserSummary createUser(String email, String password, String name, UserType type) throws SQLException {
+	public NewUserSummary createUser(String email, String password, String name, UserRoleType type) throws Exception {
 		
 		Optional<User> user = userRepository.findByEmail(email);
 		if (user.isPresent()) {
@@ -75,97 +74,263 @@ public class UserService {
 		}
 
 		String uuid = UUID.randomUUID().toString();
-		ObjectId databaseId = databaseService.findDatabase(databaseName).getId();
+		ObjectId databaseId = database.getId();
 
-		User newUser  = new User(email, passwordEncoder.encode(password), uuid, name, type);
+		User newUser  = new User(email, passwordEncoder.encode(password), uuid, name);
 		newUser.addDatabaseId(databaseId);
-		userRepository.save(newUser);
+		newUser = userRepository.save(newUser);
+		
+		
+		// Assumes type is either EDITOR OR VALIDATOR.
+		UserRole role = new UserRole(newUser.getId(), database.getId(), Arrays.asList(new UserRoleType[] { type }));
+		roleRepository.save(role);
 		
 		for (String virtuoso : virtuosoConfigurations.values().stream().map(element -> element.getName()).collect(Collectors.toList())) {
-			virtuosoJDBC.addUserToAccessGraph(virtuoso, uuid);
+			tripleStore.addUserToAccessGraph(virtuoso, uuid);
 		}
 		
 		return new NewUserSummary(newUser);
 	}
 
-	public List<EditorItem> getPublicEditors() throws SQLException {
-
-		List<User> publicEditors = userRepository.findByTypeAndIsPublic(UserType.EDITOR, true);
-		List<EditorItem> response = publicEditors.stream()
-			.map(editor -> new EditorItem(editor))
-			.collect(Collectors.toList());
-		return response;
-	}
+//	public List<EditorItem> getPublicEditors() throws SQLException {
+//
+//		List<User> publicEditors = userRepository.findByTypeAndIsPublic(UserType.EDITOR, true);
+//		List<EditorItem> response = publicEditors.stream()
+//			.map(editor -> new EditorItem(editor))
+//			.collect(Collectors.toList());
+//		return response;
+//	}
 	
-	public List<NewUserSummary> getValidatorsOfEditor(String id) throws SQLException {
-		Optional<User> loggedInUser = userRepository.findById(id);
-		List<User> validators = new ArrayList<User>();
-		if (loggedInUser.isPresent()) {
-			for (ObjectId validatorId : loggedInUser.get().getValidatorList()) {
-				Optional<User> retreivedUser = userRepository.findById(validatorId.toString());
-				retreivedUser.ifPresent(val -> validators.add(val));
-			}
-			List<NewUserSummary> response = validators.stream()
-				.map(validator -> new NewUserSummary(validator))
-				.collect(Collectors.toList());
-			return response;
-		}
-		else {
-			return null;
-		}
-	}
+//	public List<EditorItem> getPublicEditors() throws SQLException {
+//
+//		Set<ObjectId> userIds = getPublicEditorsIds();
+//		
+//		List<EditorItem> res = new ArrayList<>();
+//		
+//		for (ObjectId userId : userIds) {
+//			Optional<User> user = userRepository.findById(userId);
+//			if (user.isPresent()) {
+//				res.add(new EditorItem(user.get()));
+//			}
+//		}
+//
+//		return res;
+//	}
+//	
+//	private Set<ObjectId> getPublicEditorsIds() throws SQLException {
+//
+//		Set<ObjectId> userIds = new HashSet<>();
+//		for (Campaign role : campaignRepository.findByDatabaseIdAndType(database.getId(), CampaignType.ANNOTATION_VALIDATION)) {
+//			userIds.add(role.getUserId());
+//		}
+//		
+//		return userIds;
+//	}
+//	
+//	public List<NewUserSummary> getValidatorsOfEditor(String id) throws SQLException {
+//		Optional<User> loggedInUser = userRepository.findById(id);
+//		List<User> validators = new ArrayList<User>();
+//		if (loggedInUser.isPresent()) {
+//			for (ObjectId validatorId : loggedInUser.get().getValidatorList()) {
+//				Optional<User> retreivedUser = userRepository.findById(validatorId.toString());
+//				retreivedUser.ifPresent(val -> validators.add(val));
+//			}
+//			List<NewUserSummary> response = validators.stream()
+//				.map(validator -> new NewUserSummary(validator))
+//				.collect(Collectors.toList());
+//			return response;
+//		}
+//		else {
+//			return null;
+//		}
+//	}
+	
+//	public List<NewUserSummary> getValidatorsOfEditor(String id) throws SQLException {
+//		Optional<Campaign> loggedInUser = campaignRepository.findByDatabaseIdAndUserIdAndType(database.getId(), new ObjectId(id), CampaignType.ANNOTATION_VALIDATION);
+//		
+//		if (loggedInUser.isPresent()) {
+//			
+//			List<User> validators = new ArrayList<User>();
+//			for (ObjectId validatorId : loggedInUser.get().getValidatorId()) {
+//				Optional<User> retreivedUser = userRepository.findById(validatorId.toString());
+//				retreivedUser.ifPresent(val -> validators.add(val));
+//			}
+//			
+//			List<NewUserSummary> response = validators.stream()
+//				.map(validator -> new NewUserSummary(validator))
+//				.collect(Collectors.toList());
+//			return response;
+//		
+//		} else {
+//			return null;
+//		}
+//	}
+	
+//	public List<NewUserSummary> getValidatorsOfEditor(String userId) throws SQLException {
+//		Optional<User> loggedInUser = userRepository.findById(userId);
+//		
+//		if (loggedInUser.isPresent()) {
+//			Set<ObjectId> userIds = getPublicEditorsIds();
+//
+//			List<User> validators = new ArrayList<User>();
+//			
+//			for (ObjectId validatorId : loggedInUser.get().getValidatorList()) {
+//				if (userIds.contains(validatorId)) {
+//					Optional<User> retreivedUser = userRepository.findById(validatorId.toString());
+//					if (retreivedUser.isPresent()) {
+//						validators.add(retreivedUser.get());
+//					}
+//				}
+//			}
+//			
+//			List<NewUserSummary> response = validators.stream()
+//				.map(validator -> new NewUserSummary(validator))
+//				.collect(Collectors.toList());
+//			return response;
+//		}
+//		else {
+//			return null;
+//		}
+//	}	
 
-	public boolean addValidatorToEditor(String editorId, String currentUserId) throws SQLException {
-		Optional<User> editorOpt = userRepository.findById(editorId);
-		if (editorOpt.isPresent()) {
-			User editor = editorOpt.get();
-			List<String> validators = editor.getValidatorList().stream()
-					.map(validatorId -> validatorId.toString())
-					.collect(Collectors.toList());
-			if (validators.contains(currentUserId)) {
-				return false;
-			}
-			else {
-				editor.addValidator(new ObjectId(currentUserId));
-				userRepository.save(editor);
-				return true;
-			}
-		}
-		else {
-			return false;
-		}
-	}
+//	public boolean addValidatorToEditor(String editorId, String currentUserId) throws SQLException {
+//		Optional<User> editorOpt = userRepository.findById(editorId);
+//		if (editorOpt.isPresent()) {
+//			User editor = editorOpt.get();
+//			List<String> validators = editor.getValidatorList().stream()
+//					.map(validatorId -> validatorId.toString())
+//					.collect(Collectors.toList());
+//			if (validators.contains(currentUserId)) {
+//				return false;
+//			}
+//			else {
+//				editor.addValidator(new ObjectId(currentUserId));
+//				userRepository.save(editor);
+//				return true;
+//			}
+//		}
+//	}
+	
+//	public boolean addValidatorToEditor(String editorId, String currentUserId) throws SQLException {
+//		
+//		/// -- legacy >
+//		Optional<User> editorOpt = userRepository.findById(editorId);
+//		if (editorOpt.isPresent()) {
+//			User editor = editorOpt.get();
+//			List<String> validators = editor.getValidatorList().stream()
+//					.map(validatorId -> validatorId.toString())
+//					.collect(Collectors.toList());
+//			if (validators.contains(currentUserId)) {
+////				return false;
+//			}
+//			else {
+//				editor.addValidator(new ObjectId(currentUserId));
+//				userRepository.save(editor);
+////				return true;
+//			}
+//		}
+//		/// -- legacy <
+//		
+//		Optional<Campaign> campList = campaignRepository.findByDatabaseIdAndUserIdAndType(database.getId(), new ObjectId(editorId), CampaignType.ANNOTATION_VALIDATION);
+//		
+//		if (!campList.isPresent()) {
+//			return false;
+//		}
+//		
+//		Campaign campaign = campList.get();
+//		if (campaign.addValidatorId(new ObjectId(currentUserId))) {
+//			campaignRepository.save(campaign);
+//			return true;
+//		} else {
+//			return false;
+//		}
+//	}
 
-	public boolean removeValidatorFromEditor(String validatorId, String currentUserId) throws SQLException {
-		Optional<User> editorOpt = userRepository.findById(currentUserId);
-		if (editorOpt.isPresent()) {
-			User editor = editorOpt.get();
-			List<ObjectId> validators = editor.getValidatorList();
-			boolean success = validators.remove(new ObjectId(validatorId));
-			editor.setValidatorList(validators);
-			List<Access> accessEntries = accessRepository.findByCreatorIdAndUserIdAndAccessType(new ObjectId(currentUserId), new ObjectId(validatorId), AccessType.VALIDATOR);
-			for (Access acc : accessEntries) {
-				accessRepository.delete(acc);
-			}
-			userRepository.save(editor);
-			return true;
-		}
-		else {
-			return false;
-		}
-	}
+//	public boolean removeValidatorFromEditor(String validatorId, String currentUserId) throws SQLException {
+//		Optional<User> editorOpt = userRepository.findById(currentUserId);
+//		if (editorOpt.isPresent()) {
+//			User editor = editorOpt.get();
+//			List<ObjectId> validators = editor.getValidatorList();
+//			boolean success = validators.remove(new ObjectId(validatorId));
+//			editor.setValidatorList(validators);
+//			List<Access> accessEntries = accessRepository.findByCreatorIdAndUserIdAndAccessType(new ObjectId(currentUserId), new ObjectId(validatorId), AccessType.VALIDATOR);
+//			for (Access acc : accessEntries) {
+//				accessRepository.delete(acc);
+//			}
+//			userRepository.save(editor);
+//			return true;
+//		}
+//		else {
+//			return false;
+//		}
+//	}
+	
+//	public boolean removeValidatorFromEditor(String validatorId, String currentUserId) throws SQLException {
+//
+//		/// -- legacy >
+//		Optional<User> editorOpt = userRepository.findById(currentUserId);
+//		if (editorOpt.isPresent()) {
+//			User editor = editorOpt.get();
+//			List<ObjectId> validators = editor.getValidatorList();
+//			boolean success = validators.remove(new ObjectId(validatorId));
+//			editor.setValidatorList(validators);
+//			List<Access> accessEntries = accessRepository.findByCreatorIdAndUserIdAndAccessType(new ObjectId(currentUserId), new ObjectId(validatorId), AccessType.VALIDATOR);
+//			for (Access acc : accessEntries) {
+//				accessRepository.delete(acc);
+//			}
+//			userRepository.save(editor);
+////			return true;
+//		}
+//		else {
+////			return false;
+//		}
+//		/// -- legacy <
+//		
+////		Optional<Campaign> campList = campaignRepository.findByDatabaseIdAndUserIdAndType(database.getId(), new ObjectId(currentUserId), CampaignType.ANNOTATION_VALIDATION);
+////		
+////		if (!campList.isPresent()) {
+////			return false;
+////		}
+////		
+////		Campaign campaign = campList.get();
+////		if (campaign.removeValidatorId(new ObjectId(validatorId))) {
+////			
+////			accessRepository.deleteByCreatorIdAndUserIdAndAccessType(new ObjectId(currentUserId), new ObjectId(validatorId), AccessType.VALIDATOR);
+////			campaignRepository.save(campaign);
+////			
+////			return true;
+////		} else {
+////			return false;
+////		}
+//		
+//		return false;
+//		
+//	}
 
-	public List<EditorItem> getEditorsOfValidator(String validatorId) throws SQLException {
-		List<ObjectId> validator = new ArrayList<>();
-		validator.add(new ObjectId(validatorId));
-		List<User> editors = userRepository.findByValidatorListIn(validator);
-		List<EditorItem> response = editors.stream()
-				.map(editor -> new EditorItem(editor))
-				.collect(Collectors.toList());
-		return response;
-	}
+//	public List<EditorItem> getEditorsOfValidator(String validatorId) throws SQLException {
+//		List<ObjectId> validator = new ArrayList<>();
+//		validator.add(new ObjectId(validatorId));
+//		List<User> editors = userRepository.findByValidatorListIn(validator);
+//		List<EditorItem> response = editors.stream()
+//				.map(editor -> new EditorItem(editor))
+//				.collect(Collectors.toList());
+//		return response;
+//	}
 
 
+//	public List<EditorItem> getEditorsOfValidator(String validatorId) throws SQLException {
+//		
+//		Set<ObjectId> userIds = getPublicEditorsIds();
+//		
+//		List<EditorItem> response = new ArrayList<>();
+//		for (User editor : userRepository.findByValidatorList(new ObjectId(validatorId))) {
+//			if (userIds.contains(editor.getId())) {
+//				response.add(new EditorItem(editor));
+//			}
+//		}
+//
+//		return response;
+//	}	
 
 	public boolean addDatabaseToUser(String email, ObjectId databaseId) throws SQLException {
 		
@@ -184,7 +349,7 @@ public class UserService {
 		return true;
 	}
 	
-	public void addMissingDatabaseUsersToVirtuoso() throws SQLException {
+	public void addMissingDatabaseUsersToVirtuoso() throws Exception {
 		
 //		logger.info("Adding missing users to Virtuosos");
 		
@@ -201,17 +366,17 @@ public class UserService {
 
 		String sparql = 
 				"SELECT ?user ?type WHERE { " + 
-		           "GRAPH <" + SEMAVocabulary.accessGraph.toString() + "> { " +
+		           "GRAPH <" + resourceVocabulary.getAccessGraphResource() + "> { " +
 			           "VALUES ?user { ";
 		
 		for (User user : databaseUsers) {
-			sparql += "<" + SEMAVocabulary.getUser(user.getUuid()) + "> " ;
+			sparql += "<" + resourceVocabulary.getUserAsResource(user.getUuid()) + "> " ;
 		}
 		
 		
 		sparql += "} OPTIONAL { ?user a ?type } } } ";
 
-		for (VirtuosoConfiguration vc : virtuosoConfigurations.values()) {
+		for (TripleStoreConfiguration vc : virtuosoConfigurations.values()) {
 //			System.out.println(vc.getName());
 			
 			try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(sparql, Syntax.syntaxSPARQL_11))) {
@@ -225,7 +390,52 @@ public class UserService {
 					
 					if (type == null) {
 						logger.info("Adding user " + user + " to " + vc.getName() );
-						virtuosoJDBC.addUserToAccessGraph(vc.getName(), SEMAVocabulary.getId(user.getURI()));
+						tripleStore.addUserToAccessGraph(vc.getName(), resourceVocabulary.getUuidFromResourceUri(user.getURI()));
+					}
+				}
+			}
+		}
+	}
+	
+	public void addMissingDatabaseUserToVirtuoso(User user) throws Exception {
+		
+		boolean add = false;
+		for (ObjectId dbId : user.getDatabaseId()) {
+			if (database.getId().equals(dbId)) {
+				add = true;
+				break;
+			}
+		}
+		
+		if (!add) {
+			return;
+		}
+
+		String sparql = 
+				"SELECT ?user ?type WHERE { " + 
+		           "GRAPH <" + resourceVocabulary.getAccessGraphResource() + "> { " +
+			           "VALUES ?user { ";
+		
+		sparql += "<" + resourceVocabulary.getUserAsResource(user.getUuid()) + "> " ;
+		
+		
+		sparql += "} OPTIONAL { ?user a ?type } } } ";
+
+		for (TripleStoreConfiguration vc : virtuosoConfigurations.values()) {
+//			System.out.println(vc.getName());
+			
+			try (QueryExecution qe = QueryExecutionFactory.sparqlService(vc.getSparqlEndpoint(), QueryFactory.create(sparql, Syntax.syntaxSPARQL_11))) {
+	
+				ResultSet rs = qe.execSelect();
+	
+				while (rs.hasNext()) {
+					QuerySolution sol = rs.next();
+					Resource suser = sol.get("user").asResource();
+					Resource type = (Resource)sol.get("type");
+					
+					if (type == null) {
+						logger.info("Adding user " + suser + " to " + vc.getName() );
+						tripleStore.addUserToAccessGraph(vc.getName(), resourceVocabulary.getUuidFromResourceUri(suser.getURI()));
 					}
 				}
 			}
@@ -233,28 +443,18 @@ public class UserService {
 	}
 	
 	
-	public void transferUsersToNewConfiguration(String virtuoso) throws SQLException {
+	public void transferUsersToNewConfiguration(String virtuoso) throws Exception {
 		for (User user : userRepository.findAll()) {
-			virtuosoJDBC.addUserToAccessGraph(virtuoso, user.getUuid());
+			tripleStore.addUserToAccessGraph(virtuoso, user.getUuid());
 		}
 	}
 	
-    public void deleteAllUsers(String virtuoso) throws SQLException {
+    public void deleteAllUsers(String virtuoso) throws Exception {
     	userRepository.deleteAll();
     	
-    	virtuosoJDBC.resetAccessGraph(virtuoso);
+    	tripleStore.resetAccessGraph(virtuoso);
     }
-
-    public UserDetails getUserById(String userId) throws SQLException {
-		Optional<User> userOpt = userRepository.findById(userId);
-		if (!userOpt.isPresent()) {
-			return null;
-		}
-
-		User user = userOpt.get();
-		UserDetails response = new UserDetails(user);
-		return response;
-	}
+    
 
 	public User getUserByEmail(String email) {
 		Optional<User> userOpt = userRepository.findByEmail(email);
@@ -266,7 +466,7 @@ public class UserService {
 		return user;
 	}
 
-    public UserDetails updateUser(String userId, APIUserController.UserDetailsUpdateOptions target, ChangeUserDetailsRequest request) {
+    public User updateUser(String userId, APIUserController.UserDetailsUpdateOptions target, ChangeUserDetailsRequest request) {
 		Optional<User> userOpt = userRepository.findById(userId);
 		if (!userOpt.isPresent()) {
 			return null;
@@ -278,19 +478,19 @@ public class UserService {
 			case EMAIL:
 				user.setEmail(request.getValue());
 				break;
-			case PUBLIC:
-				if (request.getValue() == "true") {
-					user.setPublic(true);
-				} else {
-					user.setPublic(false);
-				}
-				break;
+//			case PUBLIC:
+//				if (request.getValue() == "true") {
+//					user.setPublic(true);
+//				} else {
+//					user.setPublic(false);
+//				}
+//				break;
 			case NAME:
 				user.setName(request.getValue());
 				break;
-			case JOBDESCRIPTION:
-				user.setJobDescription(request.getValue());
-				break;
+//			case JOBDESCRIPTION:
+//				user.setJobDescription(request.getValue());
+//				break;
 			case PASSWORD:
 				if (passwordEncoder.matches(request.getOldPassword(), user.getbCryptPassword())) {
 					user.setbCryptPassword(passwordEncoder.encode(request.getNewPassword()));
@@ -302,7 +502,8 @@ public class UserService {
 		}
 
 		userRepository.save(user);
-		return new UserDetails(user);
+		
+		return user;
 
 	}
 
@@ -325,5 +526,4 @@ public class UserService {
 			return false;
 		}
 	}
-
 }

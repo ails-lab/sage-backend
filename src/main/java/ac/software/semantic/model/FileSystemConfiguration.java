@@ -4,13 +4,15 @@ import java.io.File;
 
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Transient;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import ac.software.semantic.config.ConfigurationObject;
 import ac.software.semantic.security.CurrentUser;
 import ac.software.semantic.security.UserPrincipal;
 
 @Document(collection = "FileSystemConfigurations")
-public class FileSystemConfiguration {
+public class FileSystemConfiguration implements ConfigurationObject {
    @Id
    private ObjectId id;
    
@@ -18,6 +20,9 @@ public class FileSystemConfiguration {
    
    private String name;
    
+	@Transient
+	protected int order;
+
    private String dataFolder;
    
    private String ip;
@@ -66,6 +71,14 @@ public class FileSystemConfiguration {
 
 	public void setIp(String ip) {
 		this.ip = ip;
+	}
+
+	public int getOrder() {
+		return order;
+	}
+
+	public void setOrder(int order) {
+		this.order = order;
 	}
 
 

@@ -1,13 +1,23 @@
 package ac.software.semantic.model;
 
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
 import java.util.List;
 
 import org.bson.types.ObjectId;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 
+import ac.software.semantic.model.constants.DatasetState;
+import ac.software.semantic.model.state.FileExecuteState;
+import ac.software.semantic.model.state.FilePublishState;
+import ac.software.semantic.model.state.PublishState;
+
+
+@JsonInclude(JsonInclude.Include.NON_NULL)
 @Document(collection = "FileDocuments")
 public class FileDocument {
    
@@ -18,30 +28,30 @@ public class FileDocument {
    private ObjectId datasetId;
    
    private String name;
-   private String fileName;
+//   private String fileName;
+//   private List<String> contentFileNames;
    
    private String uuid;
    
-   private List<PublishState> publish;
+   private List<FilePublishState> publish;
    
-   public FileDocument() {   }
+   private FileExecuteState execute;
    
-   public FileDocument(ObjectId userId, String name, String uuid, ObjectId datasetId, String fileName) {
-       this.userId = userId;
-       this.name = name;
-       this.uuid = uuid;
-       this.datasetId = datasetId;
-       this.fileName = fileName;
-       
+   private Date updatedAt;
+   
+//   private String url;
+   
+//   private ObjectId fileSystemConfigurationId;
+
+   
+   public FileDocument() {   
        publish = new ArrayList<>();
-       
    }
 
    public ObjectId getId() {
        return id;
    }
-   
-
+ 
    public String getName() {
        return name;
    }
@@ -49,11 +59,6 @@ public class FileDocument {
    public void setName(String name) {
        this.name = name;
    }
-   
-   public ObjectId getUserId() {
-       return userId;
-   }
-   
 
 	public ObjectId getDatasetId() {
 		return datasetId;
@@ -72,22 +77,22 @@ public class FileDocument {
 	}
 
 
-	public List<PublishState> getPublish() {
+	public List<FilePublishState> getPublish() {
 		return publish;
 	}
 
-	public void setPublish(List<PublishState> publish) {
+	public void setPublish(List<FilePublishState> publish) {
 		this.publish = publish;
 	}
 
-	public PublishState getPublishState(ObjectId databaseConfigurationId) {
-		for (PublishState s : publish) {
+	public FilePublishState getPublishState(ObjectId databaseConfigurationId) {
+		for (FilePublishState s : publish) {
 			if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
 				return s;
 			}
 		}
 		
-		PublishState s = new PublishState();
+		FilePublishState s = new FilePublishState();
 		s.setPublishState(DatasetState.UNPUBLISHED);
 		s.setDatabaseConfigurationId(databaseConfigurationId);
 		publish.add(s);
@@ -95,8 +100,8 @@ public class FileDocument {
 		return s;
 	}
 
-	public PublishState checkPublishState(ObjectId databaseConfigurationId) {
-		for (PublishState s : publish) {
+	public FilePublishState checkPublishState(ObjectId databaseConfigurationId) {
+		for (FilePublishState s : publish) {
 			if (s.getDatabaseConfigurationId().equals(databaseConfigurationId)) {
 				return s;
 			}
@@ -105,13 +110,13 @@ public class FileDocument {
 		return null;
 	}
 
-	public String getFileName() {
-		return fileName;
-	}
-
-	public void setFileName(String fileName) {
-		this.fileName = fileName;
-	}
+//	public String getFileName() {
+//		return fileName;
+//	}
+//
+//	public void setFileName(String fileName) {
+//		this.fileName = fileName;
+//	}
 	
 	public synchronized void removePublishState(PublishState ps) {
 		if (publish != null) {
@@ -119,4 +124,63 @@ public class FileDocument {
 		} 
 		
 	}
+
+//	public ObjectId getFileSystemConfigurationId() {
+//		return fileSystemConfigurationId;
+//	}
+//
+//	public void setFileSystemConfigurationId(ObjectId fileSystemConfigurationId) {
+//		this.fileSystemConfigurationId = fileSystemConfigurationId;
+//	}
+
+	public ObjectId getUserId() {
+		return userId;
+	}
+
+	public void setUserId(ObjectId userId) {
+		this.userId = userId;
+	}
+
+//	public List<String> getContentFileNames() {
+//		return contentFileNames;
+//	}
+//
+//	public void setContentFileNames(List<String> contentFileNames) {
+//		this.contentFileNames = contentFileNames;
+//	}
+
+	public FileExecuteState getExecute() {
+		return execute;
+	}
+
+	public void setExecute(FileExecuteState execute) {
+		this.execute = execute;
+	}
+
+	public Date getUpdatedAt() {
+		return updatedAt;
+	}
+
+	public void setUpdatedAt(Date updatedAt) {
+		this.updatedAt = updatedAt;
+	}
+	
+	public ProcessStateContainer getCurrentPublishState(Collection<TripleStoreConfiguration> virtuosoConfigurations) {
+		for (TripleStoreConfiguration vc : virtuosoConfigurations) {
+			PublishState ps = checkPublishState(vc.getId());
+			if (ps != null) {
+				return new ProcessStateContainer(ps, vc);
+			}
+		}
+		
+		return null;
+	}
+//
+//	public String getUrl() {
+//		return url;
+//	}
+//
+//	public void setUrl(String url) {
+//		this.url = url;
+//	}	
 }
