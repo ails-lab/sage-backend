@@ -1,6 +1,0 @@
-target
-/.idea/
-/app-semantic-backend.iml
-/run-local.sh
-gs-rest-service.iml
-.env
