@@ -1,0 +1,57 @@
+{
+ "@context": {
+    "as":      "https://www.w3.org/ns/activitystreams#",
+    "dc": "http://purl.org/dc/terms/",
+	"dce": "http://purl.org/dc/elements/1.1/",
+    "foaf":    "http://xmlns.com/foaf/0.1/",
+    "oa":      "http://www.w3.org/ns/oa#",
+    "rdf":     "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "xsd":     "http://www.w3.org/2001/XMLSchema#",
+
+    "soa":     "http://sw.islab.ntua.gr/annotation/",
+
+    "edm":     "http://www.europeana.eu/schemas/edm/",
+
+    "id":      {"@type": "@id", "@id": "@id"},
+    "type":    {"@type": "@id", "@id": "@type"},
+
+    "value":         "rdf:value",
+
+    "created":       {"@id": "dc:created", "@type": "xsd:dateTime"},
+    "creator":       {"@type": "@id", "@id": "dc:creator"},
+    "language":    "dc:language",
+
+    "Software":             "as:Application",
+
+    "Person":               "foaf:Person",
+	"name":               "foaf:name",
+
+    "Annotation":           "oa:Annotation",
+	"TextPositionSelector":      "oa:TextPositionSelector",
+	"TextualBody" : "oa:TextualBody",
+    "body":          {"@type": "@id", "@id": "oa:hasBody"},
+    "end":           {"@id": "oa:end", "@type": "xsd:nonNegativeInteger"},
+	"refinedBy":     {"@type": "@id", "@id": "oa:refinedBy"},
+    "scope":         {"@type": "@id", "@id": "oa:hasScope"},
+    "selector":      {"@type": "@id", "@id": "oa:hasSelector"},
+    "start":         {"@id": "oa:start", "@type": "xsd:nonNegativeInteger"},
+    "source":        {"@type": "@id", "@id": "oa:hasSource"},
+    "target":        {"@type": "@id", "@id": "oa:hasTarget"},
+
+	"Literal":      "soa:Literal",
+	"Rating":      "soa:Rating",
+	"RDFPathSelector":      "soa:RDFPathSelector",
+    "RDFPropertySelector":      "soa:RDFPropertySelector",
+    "Validation":      "soa:Validation",
+    "confidence":    {"@id": "soa:confidence", "@type": "xsd:decimal"},
+    "destination": {"@type": "@id", "@id": "soa:destination"},
+    "property":    {"@id": "soa:property", "@type": "@id" },
+	"rdfPath":      "soa:rdfPath",
+	"recommendation": {"@type": "@vocab", "@id": "soa:recommendation"},
+    "score":    {"@id": "soa:score", "@type": "xsd:decimal"},
+    "review":    {"@type": "@id", "@id": "soa:hasReview"},
+    "accept":      "soa:Accept",
+	"reject":      "soa:Reject"
+  }
+}
+

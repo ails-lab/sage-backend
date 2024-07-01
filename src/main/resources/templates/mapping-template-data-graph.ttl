@@ -1,0 +1,16 @@
+# insert your namespace definitions here
+
+@prefix dr:   <http://islab.ntua.gr/ns/d2rml#> .
+@prefix dris:  <http://islab.ntua.gr/ns/d2rml-is#> .
+
+<#Mapping>  
+   dr:logicalGraph [ 
+      dr:source dris:CurrentD2RMLDocument ;
+	  dr:namedGraph <#Data> 
+   ] .
+
+<#Data> {
+
+   #  insert your RDF triples here
+   
+}	   

@@ -1,0 +1,2666 @@
+%& -shell-escape -enable-write-18
+\documentclass[a4paper,landscape]{slides}
+
+\usepackage{amsthm,amsmath,amssymb}
+%\usepackage{stmaryrd}
+%\usepackage{mathrsfs}
+%\usepackage{graphicx}
+%\usepackage{tabularx}
+%\usepackage{multirow}
+\usepackage[english,greek]{babel}
+\usepackage[iso-8859-7]{inputenc}
+%\usepackage[mathscr]{euscript}
+\usepackage{mathtools}
+%\usepackage{mnsymbol}
+\usepackage{graphics}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{tikz}
+%\usepackage{pgfplots}
+% \usepackage[miktex]{gnuplottex}
+% \usepackage{mathpazo}
+
+\usetikzlibrary{arrows}
+\usetikzlibrary{arrows.meta}
+
+
+
+%\newcommand{\eng}[1]{\fontencoding{OT1}\fontfamily{qpl}\selectfont\foreignlanguage{english}{#1}\fontencoding{LGR}\fontfamily{udidot}\selectfont}
+\newcommand{\eng}[1]{\foreignlanguage{english}{#1}}
+
+
+
+
+\newenvironment{ident}{\begin{list}{}{\setlength\leftmargin{0.62cm}} \item[]}{\end{list}}
+
+
+
+\usepackage{gfsdidot2}
+\renewcommand{\it}{\fontfamily{udidot}\fontseries{m}\fontshape{it}\selectfont}
+\renewcommand{\bf}{\fontfamily{udidot}\fontseries{m}\fontshape{b}\selectfont}
+
+\title{Αβεβαιότητα και ασάφεια}
+
+\begin{document}
+
+\date{}
+\maketitle
+
+\def\pr{\text{\bf\eng{Pr}}}
+\def\bel{\text{\bf\eng{Bel}}}
+\def\pl{\text{\bf\eng{Pl}}}
+\def\dis{\text{\bf\eng{Dis}}}
+\newcommand{\theory}{\mathcal{T}}
+\newcommand{\prog}{\mathcal{P}}
+\newcommand{\naf}[1]{\boldsymbol{not}\;#1}
+
+\newcommand{\reason}{{\it \Gamma}}
+
+\newcommand{\streduct}[2]{\rm{reduct}^{{\rm st}}[#2\colon#1]}
+\newcommand{\tstreduct}[2]{\rm{reduct}^{{\rm 3st}}[#2\colon#1]}
+
+\begin{slide}
+\begin{small}
+{\large Εισαγωγή}
+\begin{itemize}
+\item Η κλασική λογική ασχολείται με την αλήθεια των λογικών προτάσεων.
+\begin{itemize}
+\item Μία πρόταση μπορεί να είναι είτε {\color{blue}αληθής} είτε {\color{blue}ψευδής}.\\
+{\color{red} O Νίκος είναι φοιτητής. Όλοι οι φοιτητές έχουν τελειώσει το σχολείο.}
+\item Στόχος των διαδικασιών συλλογιστικής είναι η απόδειξη της αλήθειας ή μη κάποιας πρότασης.
+\end{itemize}
+\item Στον πραγματικό κόσμο πολλές φορές τα πράγματα είναι πιο σχετικά και δεν μπορούμε να πούμε ότι κάτι έχει {\color{blue}πάντα}, {\color{blue}αναμφίβολα}, {\color{blue}απόλυτα}, {\color{blue}πλήρως} και {\color{blue}ακριβώς} μια ιδιότητα.
+\begin{itemize}
+\item Μια ιδιότητα μπορεί να ισχύει {\it συνήθως} ή {\it σπάνια}. Ύπαρξη εξαιρέσεων.\\
+{\color{red} Τα περισσότερα πτηνά πετάνε, αλλά όχι όλα.}
+\item Μπορεί να μην είμαστε απόλυτα βέβαιοι για κάτι.\\
+{\color{red} Ο Νίκος μάλλον έχει γρίπη.}
+\begin{itemize}
+\item Η τιμή μιας ιδιότητας μπορεί να υπολογιστεί με κάποια {\it ανακρίβεια}.\\[-26pt]
+%{\bf Η θερμοκρασία μπορεί να μετρηθεί με κάποιο επίπεδο ακρίβειας.}
+\item Μπορεί να γνωρίζουμε κάτι από μια {\it μερικώς αξιόπιστη} πηγή.
+\end{itemize}
+\item Μια ιδιότητα μπορεί να ισχύει {\it μερικώς}.\\
+{\color{red} Η Κατερίνα είναι ψηλή, άλλα όχι πολύ.}
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Τρόποι χειρισμού της αβεβαιότητας και της ανακρίβειας}
+\begin{itemize}
+\item Θεωρία πιθανοτήτων
+\item Αντικειμενική και υποκειμενική πιθανότητα
+\item Μπεϋζιανή θεωρία
+\item Δίκτυα πίστης
+\item Πίστη και ευλογοφάνεια: θεωρία ενδείξεων
+\item Ασαφή σύνολα και ασαφής λογική
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Μη κατηγορικοί συλλογισμοί}
+\begin{itemize}
+\item Πρόταση στην κλασική λογική:
+\[\forall x. P(x)\]
+{\centering {\color{blue} Όλοι οι παρόντες είναι ψηλοί.}}
+\item Δυνατοί τρόποι άρσης της αυστηρότητας:
+\begin{itemize}
+\item Μπορεί να μην ισχύει απόλυτα ο ποσοδείκτης $\color{blue}\forall$.\\[2pt]
+{\color{red} Οι περισσότεροι από} τους παρόντες είναι ψηλοί, ή {\color{red} το 80\%} των παρόντων είναι ψηλοί.\\[2pt]
+%{\it Αοριστία -- Συχνότητα, αντικειμενική πιθανότητα}.
+{\it Στατιστική συχνότητα -- Αντικειμενική πιθανότητα}.
+
+\item Μπορεί να μην ισχύει απόλυτα το κατηγόρημα $\color{blue}P$.\\[2pt]
+Όλοι οι παρόντες είναι {\color{red} μέτρια}  ψηλοί. Ο Μάριος είναι {\color{red} λίγο} κοντός, και {\color{red} μέτρια} ψηλός.\\[2pt]
+%{\it  Ασάφεια -- Ασαφή κατηγορήματα}.
+{\it  Μη απολυτότητα του κατηγορήματος -- Ασάφεια}.
+
+
+\item Μπορεί να μην είμαστε απόλυτα βέβαιοι για ολόκληρη την πρόταση $\color{blue}\forall x. P(x)$.\\[2pt]
+{\color{red} Πιστεύω, χωρίς να είμαι απόλυτα σίγουρους}, ότι όλοι οι παρόντες είναι ψηλοί.\\[2pt]
+%{\it Αβεβαιότητα -- Βαθμοί πίστης, υποκειμενική πιθανότητα}.
+{\it Αβεβαιότητα -- Υποκειμενική πιθανότητα}.
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Αβεβαιότητα έναντι ασάφειας}
+\begin{itemize}
+\item Αβέβαιη πληροφορία:
+\begin{itemize}
+\item Είναι αληθής κατά μία δυνατότητα ή πιθανότητα.
+\item Η πιθανότητα ή δυνατότητα εκφράζει την ατέλεια, την μη πληρότητα της γνώσης σε σχέση με την αλήθεια της πληροφορίας.
+\item Δεν εκφράζει ιδιότητα της πληροφορίας.\\[4pt]
+{\color{red} Πιστεύω, χωρίς να είμαι απόλυτα σίγουρους, ότι όλοι οι παρόντες είναι ψηλοί.}
+\end{itemize}
+\item Ασαφής πληροφορία:
+\begin{itemize}
+\item Είναι αληθής σε κάποιο βαθμό, ο οποίος είναι πλήρως γνωστός.
+\item Βαθμωτή αντί για απόλυτη αλήθεια.
+\item Ο βαθμός αλήθειας είναι ιδιότητα της πληροφορίας.\\[4pt]
+{\color{red} Ο Μάριος είναι λίγο κοντός.}
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{center}
+{\large Αβεβαιότητα}
+\end{center}
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Η έννοια της πιθανότητας}
+\begin{itemize}
+\item Εν γένει, η πιθανότητα είναι ένα {\it μέτρο} του πόσο πιθανό είναι να συμβεί/ισχύει κάποιο γεγονός.
+\item Όσο μεγαλύτερη είναι η πιθανότητα τόσο πιο πιθανό είναι να συμβεί/ισχύει το γεγονός.
+\item {\it Φυσική} ή {\it αντικειμενική} ερμηνεία:
+\begin{itemize}
+\item Σε πειράματα τύχης ή σε φυσικές διεργασίες που εμπεριέχουν τυχαιότητα τα επιμέρους γεγονότα τείνουν να εμφανίζονται με {\it σταθερό ρυθμό} σε {\it βάθος χρόνου}.
+\item H πιθανότητα μπορεί να ιδωθεί ως η {\it σχετική συχνότητα} εμφάνισης του γεγονότος ή ως η {\it φυσική τάση} μιας κατάστασης να οδηγεί σε κάποιο γεγονός.
+\end{itemize}
+\item {\it Εμπειρική} ή {\it υποκειμενική} ερμηνεία:
+\begin{itemize}
+\item Η πιθανότητα οποιασδήποτε πρότασης μπορεί να θεωρηθεί ως η υποκειμενική αληθοφάνειά της ή ο βαθμός με τον οποίο τα στοιχεία που διαθέτουμε στηρίζουν την ισχύ της πρότασης.
+\item {\it Μπεϋζιανή πιθανότητα}: Η πιθανότητα μιας πρότασης είναι ο βαθμός πίστης μας σε αυτή την πρόταση.
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Αντικειμενική πιθανότητα}
+\begin{itemize}
+\item Οι αντικειμενικές πιθανότητες αντιπροσωπεύουν {\it συχνότητα}.
+\item Η πιθανότητα $\pr(a)$ που αποδίδουμε στο να συμβεί ένα γεγονός $a$ είναι\\[3pt]
+ \hbox to 1cm{}\vbox{το {\it ποσοστό των φορών} που αυτό συμβαίνει\\
+  σε {\it μια ακολουθία πολλών γεγονότων}\\
+   όταν επαναλαμβάνεται η {\it ίδια διαδικασία} υπό τις ίδιες συνθήκες\\
+    και κάθε γεγονός είναι {\it ανεξάρτητο} από τα προηγούμενα.}
+\item Κλασικά παραδείγματα:
+\begin{itemize}
+\item Ρίψη κέρματος, επιλογή τραπουλόχαρτου.
+\end{itemize}
+\item Η πιθανότητα καλείται {\it αντικειμενική} γιατί δεν εξαρτάται από κάποια προσωπική μας εκτίμηση.
+\item Πρακτικός υπολογισμός: $\displaystyle \pr(a) \doteq \lim_{n\rightarrow+\infty}\frac{n_a}{n}$.
+\begin{itemize}
+\item Χρειάζονται άπειρες ακολουθίες γεγονότων.
+\item Κάθε πεπερασμένη ακολουθία δίνει ελαφρώς διαφορετικό αποτέλεσμα.
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Θεωρία πιθανοτήτων}
+\begin{itemize}
+\item Ανεξαρτήτως του τρόπου ερμηνείας της πιθανότητας τα μαθηματικά της μπορούν να οριστούν αξιωματικά (αξιωματική θεωρία πιθανοτήτων).
+\item Έστω $\Omega$ το σύνολο των δυνατών εκβάσεων ενός πειράματος τύχης ({\it δειγματικός χώρος}).
+\item Κάθε μονοσύνολο του $\Omega$ είναι ένα {\it απλό ενδεχόμενο}.
+\item Κάθε ένωση απλών ενδεχομένων είναι ένα {\it σύνθετο ενδεχόμενο}.
+\item Μέτρο πιθανότητας ή πιθανότητα $\pr$ είναι μια απεικόνιση $2^\Omega\rightarrow[0,1]$, τέτοια ώστε
+\begin{enumerate}
+\item $\pr(\Omega)=1$
+\item Αν τα $a_1,\ldots,a_n$ είναι ξένα μεταξύ τους ενδεχόμενα, τότε\\
+ $\pr(a_1\cup\cdots\cup a_n)=\pr(a_1)+\cdots+\pr(a_n)$
+\end{enumerate}
+\item Αν $\pr(a)=1$ το $a$ συμβαίνει πάντα (βέβαιο ενδεχόμενο), ενώ αν $\pr(a)=0$ το $a$ δεν συμβαίνει ποτέ (αδύνατο ενδεχόμενο).
+\item H {\it κατανομή πιθανότητας} δίνει την πιθανότητα κάθε απλού ενδεχομένου.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Βασικές ιδιότητες των πιθανοτήτων}
+\begin{itemize}
+\item $\pr(\bar{a})=1-\pr(a)$, όπου $\bar{a}$ είναι το συμπληρωματικό ενδεχόμενο του $a$.
+\item $\pr(\emptyset)=0$.
+\item $\pr(a\cup b)=\pr(a) + \pr(b) - \pr(a\cap b)$.
+\item Αν τα $b_1,\ldots,b_n$ είναι ξένα μεταξύ τους ενδεχόμενα τέτοια ώστε $b_1\cup\cdots\cup b_n=\Omega$, τότε
+\[\pr(a)=\pr(a\cap b_1) + \cdots + \pr(a\cap b_n)\]
+\item Αν ο $\Omega$ είναι πεπερασμένος, πρακτικά βολεύει να αντιλαμβανόμαστε την πιθανότητα ως
+\[\pr(a) = \displaystyle\frac{|\Omega(a)|}{|\Omega|}\]
+(ο κλασικός ορισμός της πιθανότητας κατά \textlatin{Laplace}).
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Δεσμευμένη πιθανότητα}
+\begin{itemize}
+\item Η πιθανότητα ενός ενδεχομένου μπορεί να εξαρτάται από άλλα ενδεχόμενα.
+\item Η {\it δεσμευμένη πιθανότητα} του $a$ δεδομένου του $b$ %, δηλαδή η πιθανότητα να συμβεί το $a$ δεδομένου ότι έχει συμβεί το $b$,
+    είναι
+\[\pr(a|b)\doteq\frac{\pr(a\cap b)}{\pr(b)}\]
+\item Έπεται ότι
+\[\pr(a\cap b)=\pr(a|b)\cdot\pr(b)\]
+και γενικότερα ({\it κανόνας της αλυσίδας})
+\[\pr(a_1\cap\cdots\cap a_n)=\pr(a_1|a_2\cap\cdots \cap a_n)\cdot\ldots\cdot\pr(a_{n-1}|a_n)\cdot\pr(a_n)\]
+\item Τα $a$ και $b$ είναι {\it ανεξάρτητα} αν και μόνο αν \[\pr(a|b)=\pr(a)\quad \text{ ή }\quad \pr(b|a)=\pr(b)\quad \text{ ή }\quad \pr(a\cap b)=\pr(a)\cdot\pr(b)\]
+\item Δεσμευμένες εκδοχές: π.χ. $\pr(\bar{a}|c)=1-\pr(a|c)$, $\pr(a|c)=\pr(a\cap b_1|c) + \cdots + \pr(a\cap b_n|c)$, $\pr(a|b\cap c)=\pr(a|c)$ (δεσμευμένη ανεξαρτησία).
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Κανόνας του \textlatin{Bayes}}
+\begin{itemize}
+\item Γνωρίζουμε ότι $\displaystyle\pr(a|b)\doteq\frac{\pr(a\cap b)}{\pr(b)}$ και $\displaystyle\pr(b|a)\doteq\frac{\pr(a\cap b)}{\pr(a)}$
+\item Συνδυάζοντας τις δύο σχέσεις:
+\[\pr(a|b)=\frac{\pr(a)\cdot\pr(b|a)}{\pr(b)}\]
+Συσχετίζει την πιθανότητα του $a$ δεδομένου του $b$ με την πιθανότητα του $b$ δεδομένου του $a$.
+\item Παράδειγμα: $\displaystyle\pr(\text{\color{red}ασθένεια}|\text{\color{red}σύμπτωμα})=\frac{\pr(\text{ασθένεια})\pr(\text{\color{red}σύμπτωμα}|\text{\color{red}ασθένεια})}{\pr(\text{σύμπτωμα})}$\\
+\begin{itemize}
+\item Ο υπολογισμός του $\pr(\text{ασθένεια}|\text{σύμπτωμα})$ ως στατιστικής συχνότητας είναι δύσκολος. Αφορά \textcolor{blue}{διαγνωστική σχέση}.
+\item Μπορεί όμως να υπάρχουν στατιστικά στοιχεία για τα $\pr(\text{ασθένεια})$, $\pr(\text{σύμπτωμα})$ και $\pr(\text{σύμπτωμα}|\text{ασθένεια})$ (\textcolor{blue}{αιτιακή σχέση}) στον γενικό πληθυσμό.
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Παράδειγμα}
+\begin{itemize}
+\item $\displaystyle\pr(\text{μηνιγγίτιδα}|\text{αυχενική δυσκαμψία})=\frac{\pr(\text{μηνιγγίτιδα})\cdot\pr(\text{αυχενική δυσκαμψία}|\text{μηνιγγίτιδα})}{\pr(\text{αυχενική δυσκαμψία})}$
+\item Έστω $\pr(\text{μηνιγγίτιδα})= 1/50.000$, $\pr(\text{αυχενική δυσκαμψία}) = 0,01$ και\\ $\pr(\text{αυχενική δυσκαμψία}|\text{μηνιγγίτιδα})=0,7$.
+\item Αρα $\displaystyle\pr(\text{μηνιγγίτιδα}|\text{αυχενική δυσκαμψία})=\frac{1/50.000\cdot0,7}{0,01}=0,0014$.
+\item Αν υπάρξει επιδημία μηνιγγίτιδας το $\pr(\text{μηνιγγίτιδα})$ θα αυξηθεί.
+\begin{itemize}
+\item Αν το $\pr(\text{μηνιγγίτιδα}|\text{αυχενική δυσκαμψία})$ έχει υπολογιστεί στατιστικά δεν υπάρχει τρόπος να επικαιροποιηθεί.
+\item Αν έχει υπολογιστεί με τον τύπο, το $\pr(\text{μηνιγγίτιδα}|\text{αυχενική δυσκαμψία})$ θα αυξηθεί αναλογικά με το $\pr(\text{μηνιγγίτιδα})$.
+\item Η αιτιακή σχέση $\pr(\text{αυχενική δυσκαμψία}|\text{μηνιγγίτιδα})$ δεν επηρεάζεται από την επιδημία.
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Συνδυασμός πληροφορίας}
+\begin{itemize}
+\item Έστω ότι έχουμε περισσότερα συμπτώματα, π.χ:
+\begin{multline}\pr(\text{μηνιγγίτιδα}|\text{αυχενική δυσκαμψία}\wedge\text{εμετός})=\\\frac{\pr(\text{μηνιγγίτιδα})\,\cdot\,\pr(\text{αυχενική δυσκαμψία}\wedge\text{εμετός}|\text{μηνιγγίτιδα})}{\pr(\text{αυχενική δυσκαμψία}\wedge\text{εμετός})}\notag\end{multline}
+\item Χρειαζόμαστε από κοινού κατανομές πιθανότητας.
+\item Εναλλακτικά μπορούμε να κάνουμε απλουστευτικές υποθέσεις:
+\begin{multline}\pr(\text{αυχενική δυσκαμψία}\wedge\text{εμετός}|\text{μηνιγγίτιδα})=\\\pr(\text{αυχενική δυσκαμψία}|\text{μηνιγγίτιδα})\pr(\text{εμετός}|\text{μηνιγγίτιδα})\notag\end{multline}
+Η αυχενική δυσκαμψία και ο εμετός προκαλούνται από την μηνιγγίτιδα, αλλά δεν αλληλεπιδρούν.
+\item {\it Δεσμευμένη ανεξαρτησία}
+$\pr(x\wedge y|z)=\pr(x|z)\pr(y|z)$ ή\\[4pt]\phantom{x}\hskip6.34cm
+$\pr(x|y\wedge z)=\pr(x|z)$ και $\pr(y|x\wedge z)=\pr(y|z)$
+\item Η υπόθεση της δεσμευμένης ανεξαρτησίας καθιστά χρήσιμα τα πιθανοτικά συστήματα.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Απλοϊκός ταξινομητής \textlatin{Bayes}}
+\begin{itemize}
+\item Από το νόμο του \textlatin{Bayes} έχουμε:\vskip-30pt
+\[\pr(c|x_1,\ldots,x_n)=\frac{\pr(x_1,\ldots,x_n|c)\cdot\pr(c)}{\pr(x_1,\ldots,x_n)}\]
+\item Υπόθεση δεσμευμένης ανεξαρτησίας [απλοϊκότητα]: $\pr(x_1,\ldots,x_n|c)=\prod_i\pr(x_i|c)$
+\item Αρα\vspace{-11pt}
+\begin{align*}\pr(c|x_1,\ldots,x_n)=&\frac{\pr(c)}{\pr(x_1,\ldots,x_n)}\prod_i\pr(x_i|c)\\
+&\propto \pr(c)\cdot\prod_i\pr(x_i|c)\label{}\end{align*}
+\item Κανόνας ταξινόμησης (ποιο είναι το $c$?):
+\[c=\arg\max_c \pr(c)\cdot\prod_i\pr(x_i|c)\]
+\item Δεν χρειάζεται να γνωρίζουμε το $\pr(x_1,\ldots,x_n)$.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Παράδειγμα}
+\begin{itemize}
+\item Θέλουμε να υπολογίσουμε την πιθανότερη ασθένεια δεδομένων κάποιων συμπτωμάτων.
+\item Υπολογίζουμε με βάση τα δεδομένα τις εξής τιμές:
+\begin{itemize}
+\item $\pr(\text{\color{red}μηνιγγίτιδα})\cdot\pr(\text{αυχενική δυσκαμψία}|{\color{red}\text{μηνιγγίτιδα}})\cdot\pr(\text{εμετός}|\text{\color{red}μηνιγγίτιδα})$
+\item $\pr(\text{\color{red}γρίπη})\cdot\pr(\text{αυχενική δυσκαμψία}|{\color{red}\text{γρίπη}})\cdot\pr(\text{εμετός}|\text{\color{red}γρίπη})$
+\item $\pr(\text{\color{red}γαστρεντερίτιδα})\cdot\pr(\text{αυχενική δυσκαμψία}|{\color{red}\text{γαστρεντερίτιδα}})\cdot\pr(\text{εμετός}|\text{\color{red}γαστρεντερίτιδα})$
+\item ...
+\end{itemize}
+\item Επιλέγουμε την ασθένεια που δίνει την μεγαλύτερη τιμή.
+\item {\color{blue} Πιστεύουμε} (υποκειμενικά) ότι αυτή είναι η εκδηλωμένη ασθένεια στο βαθμό που προκύπτει από τα δεδομένα που διαθέτουμε.
+%\item Μετάβαση από στατιστικά δεδομένα σε βαθμούς πίστης:
+\item Μετάβαση από τις αντικειμενικές πιθανότητες στις υποκειμενικές πιθανότητες. Συνδυάζουμε τα δεδομένα για να τροποποιήσουμε το βαθμό κατά τον οποίο πιστεύουμε κάτι, όχι απλά για να συναγάγουμε νέα γνώση.
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Υποκειμενική πιθανότητα}
+\begin{itemize}
+\item Οι υποκειμενικές πιθανότητες αντιπροσωπεύουν {\it βαθμό πίστης}. Ο βαθμός πίστης μας σε μια πρόταση εξαρτάται από τα (στατιστικά) δεδομένα που διαθέτουμε.
+\item Τις χρησιμοποιούμε για να αναθεωρούμε τις πεποιθήσεις μας για το τι ισχύει στον κόσμο.
+\item Πρότερη και ύστερη πιθανότητα
+\begin{itemize}
+\item Η {\it πρότερη} πιθανότητα μιας πρότασης $\alpha$ βασίζεται στην αρχική γνώση μας ($\beta$): $\pr(\alpha|\beta)$.
+\item Η {\it ύστερη} πιθανότητα μιας πρότασης $\alpha$, ορίζεται ως προς την αρχική γνώση και τα νέα στοιχεία που αποκτούμε ($\gamma$): $\pr(\alpha|\beta\wedge\gamma)$.
+\end{itemize}
+\item Παράδειγμα
+\begin{itemize}
+\item Αν γνωρίζουμε ότι το 0,2\% του πληθυσμού έχει ηπατίτιδα ($\beta$), τότε ο βαθμός με τον οποίο πιστεύουμε ότι ένα συγκεκριμένο άτομο έχει ηπατίτιδα ($\alpha$) είναι 0,002.
+\item Αν συνυπολογίσουμε ότι το συγκεκριμένο άτομο παρουσιάζει ίκτερο ($\gamma$) μπορούμε να συμπεράνουμε ότι η ύστερη πιθανότητά του να έχει ηπατίτιδα, δεδομένων των συμπτωμάτων και της πρότερης γνώσης, είναι 0,65.
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Αντικειμενική έναντι υποκειμενικής πιθανότητας}
+\begin{itemize}
+\item Η πιθανότητα {\color{blue}ένας άντρας} να είναι παντρεμένος είναι 0,43.
+\begin{itemize}
+\item Με βάση τα στατιστικά στοιχεία 43 στους 100 άντρες είναι παντρεμένοι.
+\end{itemize}
+\item Ποια είναι η πιθανότητα να είναι παντρεμένος {\color{blue}ο Μάριος}?
+\begin{itemize}
+\item Αντικειμενικά είναι παντρεμένος με πιθανότητα 0,43.
+\item Σε ποιο βαθμό όμως πιστεύουμε ότι είναι παντρεμένος ο συγκεκριμένος άνθρωπος?
+\item Διαθέτουμε κάποια επιπλέον στοιχεία με βάση τα οποία να μπορούμε να υπολογίσουμε τον βαθμό πίστης μας?
+\item Αν ναι, πώς μπορούμε να συνδυάσουμε διάφορα στοιχεία ώστε να τον υπολογίσουμε?
+\end{itemize}
+
+\item Τα άτομα του κόσμου εν γένει ανήκουν σε διάφορες {\it κατηγορίες αναφοράς} για τις οποίες μπορεί να υπάρχουν στοιχεία.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Υπολογισμός υποκειμενικής πιθανότητας}
+\begin{itemize}
+\item Ποιος είναι ο βαθμός πίστης στην πρόταση «Ο Μάριος είναι ψηλός», όπου ο Μάριος {\color{red} είναι άνδρας}?
+\item Ας υποθέσουμε ότι με βάση τις στατιστικές το 20\% {\color{blue} των ανδρών} είναι ψηλοί.
+\begin{itemize}
+\item Η κατηγορία άνδρας είναι βασική κατηγορία αναφοράς για τον Μάριο.
+\item {\it Απευθείας συμπερασμός}: Ο Μάριος είναι ψηλός με πιθανότητα 0,2.
+\end{itemize}
+\item Επιπλέον δεδομένα: ο Μάριος {\color{red} είναι Κρητικός} και το 28\% {\color{blue} των Κρητικών} είναι ψηλοί.
+%\begin{itemize}
+%\item Μπορούμε να αναθεωρήσουμε τον βαθμό πίστης μας.
+%\end{itemize}
+\item Επιπλέον δεδομένα: το 2\% {\color{blue} των ιππέων} είναι ψηλοί.
+\item Επιπλέον δεδομένα: το 1\% των Ελλήνων {\color{blue} ιππεύoυν άλογο}.
+\begin{itemize}
+\item Είναι ο Μάριος ιππέας? Πρέπει να υπολογίσουμε την πιθανότητα να είναι?
+\end{itemize}
+\item Επιπλέον δεδομένα: ο Μάριος {\color{red} συλλέγει γραμματόσημα}.
+\item Ο απευθείας συμπερασμός ενέχει δυσκολίες
+\begin{itemize}
+\item Πώς μπορούμε να συνδυάσουμε τις πολλές κατηγορίες αναφοράς?
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Υπολογισμός υποκειμενικής πιθανότητας}
+\begin{itemize}
+\item Έστω ένα σύνολο προτάσεων $p_1,\ldots,p_n$ (στην προτασιακή λογική).\\[2pt]
+$p_1$: Ο Μάριος είναι ψηλός, $p_2$: Η Ειρήνη είναι παντρεμένη, ...
+\item Σε διαφορετικές καταστάσεις του κόσμου είναι αληθείς διαφορετικοί συνδυασμοί προτάσεων. Υπάρχουν $2^n$ δυνατοί κόσμοι.
+\item Κάθε διαφορετική κατάσταση $i$ του κόσμου είναι μια ερμηνεία $\mathcal{I}_i$.
+\begin{itemize}
+\item Η ερμηνεία απεικονίζει κάθε πρόταση στην τιμή αληθές ή ψευδές.
+\end{itemize}
+\item Δεν γνωρίζουμε την πραγματική κατάσταση του κόσμου, πιστεύουμε όμως ότι καθένας από τους δυνατούς κόσμους $i$ είναι ο πραγματικός με βαθμό $J(\mathcal{I}_i)$.
+\begin{enumerate}
+\item $0\leq J(\mathcal{I}_i)\leq 1$.
+\item  $\displaystyle\sum_i J(\mathcal{I}_i)= 1$.
+\end{enumerate}
+\item $J$ είναι η {\it από κοινού κατανομή πιθανότητας}. %Με βάση αυτή μπορούμε να υπολογίσουμε το βαθμό πίστης μας σε οποιαδήποτε πρόταση εμπλέκει τις προτασιακές μεταβλητές.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Υπολογισμός υποκειμενικής πιθανότητας}
+\begin{itemize}
+\item Ο βαθμός πίστης μας σε μια πρόταση $\alpha$:
+\[\pr(\alpha)\doteq \sum_{\mathcal{I}\models \alpha} J(\mathcal{I})\]
+δηλαδή το άθροισμα των βαθμών πίστης μας σε όλους τους κόσμους όπου η $\alpha$ είναι αληθής.
+\item Και ασφαλώς ισχύει $\displaystyle\pr(\alpha|\beta)=\frac{\pr(\alpha\wedge\beta)}{\pr(\beta)}$.
+\item Αρα
+\begin{multline}
+\pr(\text{Ψηλός(Μάριος)}|\text{Ανδρας(Μάριος)}\wedge \text{Κρητικός(Μάριος)})=\\
+\frac{\sum_{\mathcal{I}\models \text{Ψηλός(Μάριος)}\wedge\text{Ανδρας(Μάριος)}\wedge \text{Κρητικός(Μάριος)}} J(\mathcal{I})}{\sum_{\mathcal{I}\models \text{Ανδρας(Μάριος)}\wedge \text{Κρητικός(Μάριος)}} J(\mathcal{I})}\notag
+\end{multline}
+\item Πώς μπορούμε όμως να γνωρίζουμε την από κοινού κατανομή πιθανότητας?
+\begin{itemize}
+\item Απαιτείται να γνωρίζουμε $2^n-1$ το πλήθος τιμές της $J(\mathcal{I})$.
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Δίκτυα πίστης}
+\begin{itemize}
+\item Έστω $\mathcal{I}$ μια ερμηνεία των προτάσεων $p_1,\ldots,p_n$ την οποία συμβολίζουμε με $\langle P_1,\ldots,P_n\rangle$, όπου είτε $P_i = p_i$ είτε $P_i = \neg p_i$.
+\item Αρα
+\[J(\langle P_1,\ldots,P_n\rangle)=\pr(P_1\wedge P_2\wedge\cdots\wedge P_n)\]
+\item Ακραία απλούστευση:
+\begin{itemize}
+\item Όλες οι ατομικές προτάσεις είναι ανεξάρτητες μεταξύ τους
+\[J(\langle P_1,\ldots,P_n\rangle)=\pr(P_1)\cdot\pr(P_2)\cdots\pr(P_n)\]
+\item Χρειαζόμαστε $n$ τιμές.
+\item Συνήθως υπάρχουν εξαρτήσεις μεταξύ των προτάσεων που δεν μπορούμε να αγνοήσουμε.
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Δίκτυα πίστης}
+\begin{itemize}
+\item Πιο ρεαλιστική απλούστευση:
+\begin{itemize}
+\item Κατασκευάζουμε ένα {\it δίκτυο πίστης}, δηλαδή ένα κατευθυντό άκυκλο γράφημα $(\mathcal{V},\mathcal{E})$ όπου
+
+$\mathcal{V} = \{p_1,\ldots, p_n\}$ και
+
+$\mathcal{E} = \{(p_i,p_j)\mid\text{αν θεωρούμε ότι η αλήθεια της } p_i \text{ επηρεάζει την αλήθεια της } p_j\}$
+
+\item H $p_i$ είναι {\it γονέας} της $p_j$.
+\end{itemize}
+\item Έστω ότι διατάσσουμε τις προτάσεις έτσι ώστε αν η $p_i$ είναι γονέας της $p_j$, τότε $i<j$.
+\item Με βάση τον κανόνα της αλυσίδας
+\[J(\langle P_1,\ldots,P_n\rangle)=\pr(P_1)\cdot\pr(P_2|P_1)\cdot\pr(P_3|P_1\wedge P_2)\cdots\pr(P_n|P_1\wedge\cdots\wedge P_{n-1})\]
+\item Πάλι χρειάζεται να γνωρίζουμε $2^n-1$ αριθμούς.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Δίκτυα πίστης}
+\begin{itemize}
+\item Μια ακόμη απλούστευση:
+\begin{itemize}
+\item \textcolor{red}{Κάθε προτασιακή μεταβλητή είναι δεσμευμένα ανεξάρτητη από τις λοιπές προηγούμενές της, δεδομένων των γονέων της}:
+\[\pr(P_{j}|P_1\wedge\cdots\wedge P_{j-1})=\pr(P_j|\text{γονείς}(P_j))\]
+όπου
+\[\text{γονείς}(P_i)= \bigwedge_{(p_i,p_k)\in\mathcal{E}} P_k\]
+είναι η σύζευξη των προτασιακών μεταβλητών $P_i$ που αντιστοιχούν στους γονείς της $p_i$ στο γράφημα με την υπόθεση ότι $\text{γονείς}(P_i)\subseteq\{P_{i-1},\ldots,P_1\}$.
+\item Αρα, $J(\langle P_1,\ldots,P_n\rangle)=\pr(P_1|\text{γονείς}(P_1))\cdot\pr(P_2|\text{γονείς}(P_2))\cdot\pr(P_n|\text{γονείς}(P_n))$
+\end{itemize}
+\item Για κάθε $p$ με γονείς τις $s_1,\ldots s_k$ πρέπει να γνωρίζουμε τα
+\[\pr(p|s_1\wedge\ldots\wedge s_k),\ \pr(p|\neg s_1\wedge\ldots\wedge s_k),\ \ldots, \ \pr(p|\neg s_1\wedge\ldots\wedge \neg s_k)\]
+\begin{itemize}
+\item Χρειαζόμαστε το πολύ $n\cdot 2^k$, όπου $k$ το μέγιστο πλήθος γονέων [$<<2^n$].
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Απλό παράδειγμα}
+\begin{itemize}
+\item Δίκτυο πίστης
+\begin{center}
+\vspace*{-20pt}
+\begin{tikzpicture}
+\tikzset{
+    >=stealth',
+    pil/.style={-{Stealth[scale=2.0]}}
+}
+  %[auto=left,every node/.style={circle}]
+  \node[shape=circle,draw=black,scale=0.9] (n1) at (2,3) {$p_1$};
+  \node[shape=circle,draw=black,scale=0.9] (n21) at (0,1.5) {$p_2$};
+  \node[shape=circle,draw=black,scale=0.9] (n22) at (4,1.5) {$p_3$};
+  \node[shape=circle,draw=black,scale=0.9] (n3) at (2,0) {$p_4$};
+
+  \draw[pil] (n1) -- (n21);
+  \draw[pil] (n1) -- (n22);
+  \draw[pil] (n21) -- (n3);
+  \draw[pil] (n22) -- (n3);
+\end{tikzpicture}
+\end{center}
+\item Αρα
+\[J(\langle P_1,P_2,P_3,P_4\rangle)=\pr(P_1)\cdot\pr(P_2|P_1)\cdot\pr(P_3|P_1)\cdot\pr(P_4|P_2\wedge P_3))\]
+και π.χ.
+
+$J(\langle p_1,p_2,p_3,p_4\rangle)=\pr(p_1)\cdot\pr(p_2|p_1)\cdot\pr(p_3|p_1)\cdot\pr(p_4|p_2\wedge p_3))$
+
+$J(\langle p_1,p_2,p_3,\neg p_4\rangle)=\pr(p_1)\cdot\pr(p_2|p_1)\cdot\pr(p_3|p_1)\cdot(1-\pr(p_4|p_2\wedge p_3)))$
+
+$J(\langle \neg p_1,p_2,p_3,\neg p_4\rangle)=(1-\pr(p_1))\cdot\pr(p_2|\neg p_1)\cdot\pr(p_3|p_1)\cdot(1-\pr(p_4|p_2\wedge p_3)))$
+
+\item Πρέπει να γνωρίζουμε $1+2+2+4=9$ πιθανότητες.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Αναλυτικό παράδειγμα}
+\begin{itemize}
+\item Θέλουμε να υπολογίσουμε τον βαθμό πίστης μας στο αν η οικογένεια του Μάριου βρίσκεται εκτός σπιτιού με βάση ορισμένα δεδομένα.
+\begin{itemize}
+\item Η οικογένειά του έχει έναν σκύλο.
+\item Όταν η οικογένεια βρίσκεται έξω ($fo$) ο σκύλος σχεδόν πάντα βρίσκεται και αυτός έξω ($do$).
+\item Η οικογένεια βγάζει τον σκύλο έξω όταν έχει εντερικές διαταραχές ($bp$). Αυτό συμβαίνει ευτυχώς σπάνια.
+\item Όταν ο σκύλος βρίσκεται έξω συχνά κανείς τον ακούει να γαβγίζει ($hb$) όταν πλησιάζει.
+\item Όταν η οικογένεια φεύγει, συνήθως αφήνει το εξωτερικό φως αναμμένο ($lo$).
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Αναλυτικό παράδειγμα}
+\begin{itemize}
+\item Σχήμα
+\begin{center}
+\begin{tikzpicture}
+\tikzset{
+    >=stealth',
+    pil/.style={-{Stealth[scale=2.0]}}
+}
+  %[auto=left,every node/.style={circle}]
+  \node[shape=circle,draw=black,very thick,label=above:\text{\tiny{οικογένεια έξω}},label=left:{\tiny$\pr(fo)=0,15$}] (fo) at (4,6) {\phantom{a}};
+  \node[shape=circle,draw=black,very thick,label=above:\text{\tiny{εντερικές διαταραχές}},label=left:{\tiny$\pr(bp)=0,01$}] (bp) at (12,6) {\phantom{a}};
+  \node[shape=circle,draw=black,very thick,label=right:\text{\tiny{φως αναμμένο}},label=left:{\tiny$\begin{array}{l}\pr(lo|fo)=0,60\\\pr(lo|\neg fo)=0,05\end{array}$}] (lo) at (0,3) {\phantom{a}};
+  \node[shape=circle,draw=black,very thick,label=left:\text{\tiny{σκύλος έξω}},label=right:{\tiny$\begin{array}{l}\\\\\pr(do|fo\wedge bp)=0,99\\\pr(do|fo\wedge\neg bp)=0,90\\\pr(do|\neg fo\wedge bp)=0,97\\\pr(do|\neg fo\wedge\neg bp)=0,30\end{array}$}] (do) at (8,3) {\phantom{a}};
+  \node[shape=circle,draw=black,very thick,label=below:\text{\tiny{ακούγεται γάβγισμα}},label=left:{\tiny$\begin{array}{l}\pr(hb|do)=0,70\\\pr(hb|\neg do)=0,01\end{array}$}] (hb) at (8,0) {\phantom{a}};
+
+  \draw[pil] (fo) -- (lo);
+  \draw[pil] (fo) -- (do);
+  \draw[pil] (bp) -- (do);
+  \draw[pil] (do) -- (hb);
+\end{tikzpicture}
+\end{center}
+\item Αρα \[J(\langle FO,LO,BP,DO,HB\rangle)=\pr(FO)\cdot\pr(LO|FO)\cdot\pr(BP)\cdot\pr(DO|FO\wedge BP)\cdot\pr(HB|DO)\]
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Αναλυτικό παράδειγμα}
+\begin{itemize}
+\item Ποιος είναι βαθμός πίστης μας στο ότι η οικογένειά του Μάριου βρίσκεται έξω δεδομένου ότι το φως είναι αναμμένο αλλά δεν ακούμε τον σκύλο να γαβγίζει?
+    \[\pr(fo|lo\wedge\neg hb)=\frac{\pr(fo\wedge lo\wedge \neg hb)}{\pr(lo\wedge\neg hb)}=\frac{\sum J(\langle fo,lo,BP,DO,\neg hb\rangle)}{\sum J(\langle FO,lo,BP,DO,\neg hb\rangle)}\]
+    όπου
+    \begin{multline*}
+    \sum J(\langle fo,lo,BP,DO,\neg hb\rangle)=J(\langle fo,lo,bp,do,\neg hb\rangle) + J(\langle fo,lo,bp,\neg do,\neg hb\rangle)+\\J(\langle fo,lo,\neg bp,do,\neg hb\rangle)+J(\langle fo,lo,\neg bp, \neg do,\neg hb\rangle)
+    \end{multline*}
+    και
+    \begin{multline*}
+    \sum J(\langle FO,lo,BP,DO,\neg hb\rangle)=J(\langle fo,lo,bp,do,\neg hb\rangle) + J(\langle fo,lo,bp,\neg do,\neg hb\rangle)+\\
+    \hskip9cm J(\langle \neg fo,lo,\neg bp,do,\neg hb\rangle)+J(\langle \neg fo,lo,\neg bp, \neg do,\neg hb\rangle) +\\
+    \hskip9cm J(\langle fo,lo,bp,do,\neg hb\rangle) + J(\langle fo,lo,bp,\neg do,\neg hb\rangle)+\\J(\langle \neg fo,lo,\neg bp,do,\neg hb\rangle)+J(\langle \neg fo,lo,\neg bp, \neg do,\neg hb\rangle)
+    \end{multline*}
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Αναλυτικό παράδειγμα}
+\begin{itemize}
+\item
+{\tiny
+
+$J(\langle fo,lo,bp,do,\neg hb\rangle)=\pr(fo)\cdot \pr(lo|fo)\cdot \pr(bp)\cdot \pr(do|fo\wedge bp)\cdot (1-\pr(hb|do))$\\
+$\phantom{J(\langle fo,lo,bp,do,\neg hb\rangle)}=0,15\cdot 0,60\cdot 0,01\cdot 0,99\cdot 0,30 = 0,0002673$\\[2pt]
+$J(\langle fo,lo,bp,\neg do,\neg hb\rangle)=\pr(fo)\cdot \pr(lo|fo)\cdot \pr(bp)\cdot (1-\pr(do|fo\wedge bp))\cdot (1-\pr(hb|\neg do))$\\
+$\phantom{J(\langle fo,lo,bp,\neg do,\neg hb\rangle)}=0,15\cdot 0,60\cdot 0,01\cdot 0,01\cdot 0,99 = 0,00000891$\\[2pt]
+$J(\langle fo,lo,\neg bp,do,\neg hb\rangle)=\pr(fo)\cdot \pr(lo|fo)\cdot (1-\pr(bp))\cdot \pr(do|fo\wedge \neg bp)\cdot (1-\pr(hb|do))$\\
+$\phantom{J(\langle fo,lo,\neg bp,do,\neg hb\rangle)}=0,15\cdot 0,60\cdot 0,99\cdot 0,90\cdot 0,30 = 0,024057$\\[2pt]
+$J(\langle fo,lo,\neg bp,\neg do,\neg hb\rangle)=\pr(fo)\cdot \pr(lo|fo)\cdot (1-\pr(bp))\cdot (1-\pr(do|fo\wedge \neg bp))\cdot (1-\pr(hb|\neg do))$\\
+$\phantom{J(\langle fo,lo,\neg bp,\neg do,\neg hb\rangle)}=0,15\cdot 0,60\cdot 0,99\cdot 0,10\cdot 0,99 = 0,0088209$\\[2pt]
+$J(\langle \neg fo,lo,bp,do,\neg hb\rangle)=(1-\pr(fo))\cdot \pr(lo|\neg fo)\cdot \pr(bp)\cdot \pr(do|\neg fo\wedge bp)\cdot (1-\pr(hb|do))$\\
+$\phantom{J(\langle \neg fo,lo,bp,do,\neg hb\rangle)}=0,85\cdot 0,05\cdot 0,01\cdot 0,97\cdot 0,30 = 0,000123675$\\[2pt]
+$J(\langle \neg fo,lo,bp,\neg do,\neg hb\rangle)=(1-\pr(fo))\cdot \pr(lo|\neg fo)\cdot \pr(bp)\cdot (1-\pr(do|\neg fo\wedge bp))\cdot (1-\pr(hb|\neg do))$
+$\phantom{J(\langle \neg fo,lo,bp,\neg do,\neg hb\rangle)}=0,85\cdot 0,05\cdot 0,01\cdot 0,03\cdot 0,99 = 0,0000126225$\\[2pt]
+$J(\langle \neg fo,lo,\neg bp,do,\neg hb\rangle)=(1-\pr(fo))\cdot \pr(lo|\neg fo)\cdot (1-\pr(bp))\cdot \pr(do|\neg fo\wedge \neg bp)\cdot (1-\pr(hb| do))$
+$\phantom{J(\langle \neg fo,lo,\neg bp,do,\neg hb\rangle)}=0,85\cdot 0,05\cdot 0,99\cdot 0,30\cdot 0,30 = 0,0000126225$\\[2pt]
+$J(\langle \neg fo,lo,\neg bp,\neg do,\neg hb\rangle)=(1-\pr(fo))\cdot \pr(lo|\neg fo)\cdot (1-\pr(bp))\cdot (1-\pr(do|\neg fo\wedge \neg bp))\cdot (1-\pr(hb| \neg do))$
+$\phantom{J(\langle \neg fo,lo,\neg bp,\neg do,\neg hb\rangle)}=0,85\cdot 0,05\cdot 0,99\cdot 0,70\cdot 0,99 = 0,029157975$}
+\item Τελικά $\pr(fo|lo\wedge\neg hb)=0,003315411-0,662369075\approxeq0.5$
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Αναλυτικό παράδειγμα}
+\begin{itemize}
+\item Οι υπολογισμοί σε ένα δίκτυο πίστης γίνονται ουσιαστικά με απαρίθμηση όλων των δυνατοτήτων.
+\item Οι υπολογισμοί μπορούν κάπως να απλουστερούν (π.χ. με ομαδοποίηση)
+
+    \begin{align*}
+    \pr(fo|lo\wedge\neg hb)&=\frac{\pr(fo\wedge lo\wedge \neg hb)}{\pr(lo\wedge\neg hb)}\\[3pt]&=
+    %\frac{\sum J(\langle fo,lo,BP,DO,\neg hb\rangle)}{\sum J(\langle FO,lo,BP,DO,\neg hb\rangle)}
+    \frac{\sum_{BP}\sum_{DO} \pr(fo)\pr(lo|fo)\pr(BP)\pr(DO|fo\wedge BP)\pr(\neg hb|DO)}{\sum_{FO}\sum_{BP}\sum_{DO} \pr(FO)\pr(lo|FO)\cdot\pr(BP)\pr(DO|FO\wedge BP)\pr(\neg hb|DO)}\\[3pt]&=
+    \frac{\pr(fo)\pr(lo|fo)\sum_{BP} \pr(BP)\sum_{DO} \pr(DO|fo\wedge BP)\pr(\neg hb|DO)}{\sum_{FO}\pr(FO)\sum_{BP}\sum_{DO} \pr(lo|FO)\pr(BP)\pr(DO|FO\wedge BP)\pr(\neg hb|DO)}
+    %\pr(FO)\cdot\pr(LO|FO)\cdot\pr(BP)\cdot\pr(DO|FO\wedge BP)\cdot\pr(HB|DO)
+    \end{align*}
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Αναλυτικό παράδειγμα}
+\begin{itemize}
+\item Ποιος είναι βαθμός πίστης μας στο ότι η οικογένειά του Μάριου βρίσκεται έξω δεδομένου ότι το φως είναι αναμμένο?
+    \begin{align*}
+    \pr(fo|lo)&=\frac{\pr(lo|fo)\pr(fo)}{\pr(lo)}\\[3pt]
+              &=\frac{\pr(lo|fo)\pr(fo)}{\pr(lo|fo)\pr(fo) + \pr(lo|\neg fo)\pr(\neg fo)}
+    \end{align*}
+\item Δεν χρειάζεται η από κοινού κατανομή πιθανότητας.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Πολυπλοκότητα}
+\begin{itemize}
+\item Όταν χρησιμοποιούμε την από κοινού κατανομή πιθανότητας είναι σαν να χρησιμοποιούμε όλες τις δυνατές ερμηνείες για να εξαγάγουμε συμπεράσματα.
+\item Στα δίκτυα πίστης  εν γένει είναι εύκολη η διατύπωση των δεδομένων, αλλά όχι και η συλλογιστική.
+
+\item Η πολυπλοκότητα της συλλογιστικής στα δίκτυα πίστης εξαρτάται από τη δομή του δικτύου.
+\item Στη γενική περίπτωση ο υπολογισμός είναι $NP$-δύσκολος (εκθετικού χρόνου) οπότε είναι εφικτός μόνο για μικρά προβλήματα.
+\item Αν το δίκτυο πίστης είναι απλά συνδεδεμένο, δηλαδή αν υπάρχει μόνο μία διαδρομή μεταξύ δύο κόμβων τότε ο υπολογισμός μπορεί να γίνει σε γραμμικό ως προς το μέγεθος του δικτύου χώρο και χρόνο.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Δίκτυα πίστης: διάταξη κόμβων}
+\begin{itemize}
+\item Η διάταξη των κόμβων είναι σημαντική
+\begin{center}
+%\vspace*{-20pt}
+\begin{tikzpicture}
+\tikzset{
+    >=stealth',
+    pil/.style={-{Stealth[scale=2.0]}}
+}
+  %[auto=left,every node/.style={circle}]
+  \node[shape=circle,draw=black,very thick,label=left:\text{\tiny διάρρηξη}] (b) at (0.5,6) {\phantom{a}};
+  \node[shape=circle,draw=black,very thick,label=right:\text{\tiny σεισμός}] (e) at (3.5,6) {\phantom{a}};
+  \node[shape=circle,draw=black,very thick,label=right:\text{\tiny συναγερμός}] (s) at (2,3) {\phantom{a}};
+  \node[shape=circle,draw=black,very thick,label=below:\text{\tiny κλήση από Μαρία}] (m) at (0,0) {\phantom{a}};
+  \node[shape=circle,draw=black,very thick,label=below:\text{\tiny κλήση από Γιάννη}] (j) at (5,0) {\phantom{a}};
+
+  \draw[pil] (b) -- (s);
+  \draw[pil] (e) -- (s);
+  \draw[pil] (s) -- (m);
+  \draw[pil] (s) -- (j);
+\end{tikzpicture}
+\hskip1.5cm
+\begin{tikzpicture}
+\tikzset{
+    >=stealth',
+    pil/.style={-{Stealth[scale=2.0]}}
+}
+  \node[shape=circle,draw=black,very thick,label=left:\text{\tiny κλήση από Μαρία}] (m) at (0,6) {\phantom{a}};
+  \node[shape=circle,draw=black,very thick,label=above:\text{\tiny κλήση από Γιάννη}] (j) at (4,4.5) {\phantom{a}};
+  \node[shape=circle,draw=black,very thick,label=right:\text{\tiny συναγερμός}] (s) at (2,3) {\phantom{a}};
+  \node[shape=circle,draw=black,very thick,label=below:\text{\tiny διάρρηξη}] (b) at (0,1.5) {\phantom{a}};
+  \node[shape=circle,draw=black,very thick,label=below:\text{\tiny σεισμός}] (e) at (6,0) {\phantom{a}};
+
+  \draw[pil] (m) -- (j);
+  \draw[pil] (m) -- (s);
+  \draw[pil] (j) -- (s);
+  \draw[pil] (s) -- (b);
+  \draw[pil] (s) -- (e);
+  \draw[pil] (b) -- (e);
+\end{tikzpicture}
+\end{center}
+\item Προσθήκη πρώτα των αιτιών και μετά των επηρεαζόμενων προτάσεων.
+\item Αιτιακά και διαγνωστικά μοντέλα.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+
+
+\begin{slide}
+\begin{small}
+{\large Πίστη και ευλογοφάνεια}
+\begin{itemize}
+\item Έστω ότι βρίσκουμε και ρίχνουμε ένα νόμισμα.
+\item Αν γνωρίζουμε ότι το νόμισμα είναι αμερόληπτο τότε ο βαθμός πίστης μας ότι θα έρθει κορώνα ή γράμματα είναι 0.5.
+\item Αν δεν γνωρίζουμε αν το νόμισμα είναι αμερόληπτο ή όχι?
+\begin{itemize}
+\item Ο βαθμός πίστης μας ότι θα έρθει κορώνα ή γράμματα μπορεί να κυμαίνεται από 0 -- 1.
+\item Δεν έχουμε λόγο να πιστέψουμε ότι θα έρθει κορώνα ή γράμματα.
+
+$\bel(\text{κορώνα})=\bel(\text{γράμματα})=0$.
+\item Δεν έχουμε λόγο να αμφιβάλουμε ότι θα έρθει κορώνα ή γράμματα.
+
+$\pl(\text{κορώνα})=\pl(\text{γράμματα})=1$.
+\end{itemize}
+\item Το $\bel$ είναι η {\it πίστη}.
+\item Το $\pl$ είναι η {\it ευλογοφάνεια}.
+\item Θα μπορούσαμε να τα δούμε σαν άνω και κάτω όρια της πιθανότητας.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Θεωρία \eng{Demspter-Shafer} ή θεωρία ενδείξεων}
+\begin{itemize}
+\item Έστω $\Omega$ το σύνολο των δυνατών καταστάσεων ενός συστήματος.
+\item Το $2^\Omega$ είναι το σύνολο όλων των υποσυνόλων του $\Omega$ συμπεριλαμβανομένου του $\emptyset$ και του $\Omega$.
+\begin{itemize}
+\item Π.χ. αν $\Omega=\{a,b\}$ τότε $2^\Omega=\{\emptyset,\{a\},\{b\},\Omega\}$
+\end{itemize}
+\item {\it Μάζα πίστης} είναι μια απεικόνιση $m:2^\Omega\rightarrow [0,1]$, τέτοια ώστε:
+\begin{itemize}
+\item $m(\emptyset)$ = 0.
+\item $\displaystyle\sum_{A\subseteq 2^\Omega} m(A)$ = 1.
+\end{itemize}
+\item Η μάζα του $A$ εκφράζει το ποσοστό των διαθέσιμων στοιχείων που υποστηρίζουν τον ισχυρισμό ότι η κατάσταση του συστήματος ανήκει στο $A$, {\it αλλά όχι} σε κάποιο υποσύνολο του $A$.
+%\item Πίστη: $\displaystyle\bel(A)=\sum_{B|B\subseteq A} m(B)$.
+%\item Ευλογοφάνεια: $\displaystyle\pl(A)=\sum_{B|B\cap A\neq \emptyset} m(B)$.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Πίστη και ευλογοφάνεια}
+\begin{itemize}
+\item Πίστη: $\displaystyle\bel(A)=\sum_{B|B\subseteq A} m(B)$.
+\item Ευλογοφάνεια: $\displaystyle\pl(A)=\sum_{B|B\cap A\neq \emptyset} m(B)$.
+\item Βασικές ιδιότητες:
+\begin{itemize}
+\item $\displaystyle\bel(A)\leq\pr(A)\leq\pl(A)$.
+\item $\displaystyle\pl(A)=1-\bel(\bar{A})$.
+\item $\displaystyle\bel(A)+\bel(\bar{A})\leq1$.
+\end{itemize}
+%\item Είναι δυνατός ο συνδυασμός δύο διαφορετικών μαζών πίστης για το ίδιο σύνολο καταστάσεων.
+\item Η θεωρία ενδείξεων είναι γενίκευση της μπεϋζιανής θεωρίας της υποκειμενικής πιθανότητας.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+
+\begin{slide}
+\begin{small}
+{\large Παράδειγμα}
+\begin{itemize}
+\item Έστω το εξής πρόβλημα και δεδομένα
+\begin{itemize}
+\item Τέσσερις άνθρωποι (οι $B$, $J$, $S$ και $Κ$) είναι κλειδωμένοι σε ένα δωμάτιο και τα φώτα σβήνουν.
+\item Όταν ανάβουν τα φώτα ο $K$ είναι νεκρός, μαχαιρωμένος.
+\item Ο $K$ δεν έχει αυτοκτονήσει.
+\item Κανείς άλλος δεν εισήλθε στο δωμάτιο.
+\item Ο δολοφόνος είναι ένας.
+\end{itemize}
+\item Ποιος είναι ο δολοφόνος?
+\item Έχουμε $\Omega=\{B,J,S\}$.
+\item Στην μπεϋζιανή προσέγγιση θα προσπαθούσαμε να υπολογίσουμε βαθμούς πίστης (υποκειμενικές πιθανότητες). Π.χ:
+ $\pr(B)=0.2$, $\pr(J)=0.3$, $\pr(S)=0.5$.
+\item Επομένως, $\pr(B\cup J)=0.5$, $\pr(B\cup S)=0.7$, $\pr(J\cup S)=0.8$, $\pr(B\cup J\cup S)=1$.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Παράδειγμα}
+\begin{itemize}
+\item Στη θεωρία ενδείξεων θα είχαμε ένα πίνακα σαν τον εξής:\\[5pt]
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+Ένοχος & $m$ & $Bel$ & $Pl$ & $Dis$\\
+\hline
+$\emptyset$ & 0 & 0 & 0 & 1\\
+$\{B\}$ & 0.1 & 0.1 & 0.4 & 0.6 \\
+$\{J\}$ & 0.2 & 0.2 & 0.7 & 0.3\\
+$\{S\}$ & 0.1 & 0.1 & 0.6 & 0.4\\
+$\{B, J\}$ & 0.1 & 0.4 & 0.9 & 0.1\\
+$\{B, S\}$ & 0.1 & 0.3 & 0.8 & 0.2\\
+$\{S, J\}$ & 0.3 & 0.6 & 0.9 & 0.1\\
+$\{B,J,S\}$ & 0.1 & 1 & 1 & 0\\
+\hline
+\end{tabular}\vskip5pt
+όπου οι μάζες έχουν προσδιοριστεί π.χ. από τον αστυνομικό που ερεύνησε την υπόθεση.
+\item Αμφιβολία: $\displaystyle\dis(A)=1-\pl(A)$.
+\item Μικρό εύρος πίστης σημαίνει σχετική βεβαιότητα για αυτό που πιστεύουμε.
+\begin{itemize}
+\item Π.χ. το εύρος πίστης του $\{B,S\}$ είναι $[0.3, 0.8]$, ενώ του $\{S,J\}$ είναι $[0.6, 0.9]$.
+\end{itemize}
+\end{itemize}
+
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Συνδυασμός μαρτυριών}
+\begin{itemize}
+\item Κάθε μάζα πίστης αποτελεί μια αποτύπωση των όσων πιστεύουμε για το σύστημα με βάση κάποια στοιχεία.
+\item Μπορεί να υπάρχουν διαφορετικές μάζες πίστης προερχόμενες από διαφορετικές πηγές που στηρίζονται σε διαφορετικά στοιχεία.
+\item {\it Κανόνας συνδυασμού του \textlatin{Dempster}} για δύο μάζες πίστης $m_1$ και $m_2$:
+\begin{itemize}
+\item $m_{1,2}(\emptyset)=0$
+\item $\displaystyle m_{1,2}(A)=(m_1\oplus m_2)(A)=\frac{1}{1-K}\sum_{B\cap C=A\neq\emptyset}m_1(B)m_2(C)$\\[4pt]
+όπου
+$K=\displaystyle \sum_{B\cap C=\emptyset} m_1(B)m_2(C)$.
+\item To $Κ$ είναι μέτρο του κατά πόσο είναι αντικρουόμενες οι δύο μάζες πίστης.
+\item Ο παράγοντας $\frac{1}{1-K}$ έχει ως αποτέλεσμα να αγνοούνται τα αντικρουόμενα στοιχεία
+\end{itemize}
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Παράδειγμα}
+\begin{itemize}
+\item Αν την υπόθεση ερεύνησαν δύο αστυνομικοί και κατέληγαν σε διαφορετικές μάζες πίστης θα είχαμε ένα πίνακα σαν τον εξής:\\[7pt]
+\begin{tabular}{|l|c|c|c||c|c|c||c|c|c|}
+\hline
+Ένοχος & $m_1$ & $Bel_1$ & $Pl_1$ & $m_2$ & $Bel_2$ & $Pl_2$ & $m$ & $Bel$ & $Pl$\\
+\hline
+$\emptyset$ & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0 & 0\\
+$\{B\}$ & 0 & 0 & 0.8 & 0.6 & 0.6 & 1 & 0.54 & 0.54 & 0.91\\
+$\{J\}$ & 0 & 0 & 1 & 0 & 0 & 0.4 & 0 & 0 & 0.45\\
+$\{S\}$ & 0 & 0 & 0.5 & 0 & 0 & 0.4 & 0 & 0 & 0.23\\
+$\{B, J\}$ & 0.5 & 0.5 & 1 & 0 & 0.6 & 1 & 0.23 & 0.77 & 1\\
+$\{B, S\}$ & 0 & 0 & 1 & 0 & 0.6 & 1 & 0 & 0.54 & 1\\
+$\{S, J\}$ & 0.2 & 0.2 & 1 & 0 & 0 & 0.4 & 0.09 & 0.09 & 0.45\\
+$\{B,J,S\}$ & 0.3 & 1 & 1 & 0.4 & 1 & 1 & 0.14 & 1 & 1\\
+\hline
+\end{tabular}\vskip5pt
+\item Οι δύο μάζες συνδυάστηκαν με τον κανόνα του συνδυασμού του \textlatin{Dempster}.
+\begin{itemize}
+\item $K=m_1(\{S,J\})m_2(\{B\})=0.2\cdot0.6=0.12$
+\item $\displaystyle m(\{B\})=\frac{m_1(\{B,J\})m_2(\{B\})+m_1(\{B,J,S\})m_2(\{B\})}{1-K}=\frac{0.5\cdot0.6+0.3\cdot0.6}{1-0.12}=0.54$
+\end{itemize}
+\end{itemize}
+
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ισχυρά αντικρουόμενες μάζες πίστης}
+\begin{itemize}
+\item Έστω ότι έχουμε τις εξής μάζες πίστης $m_1$ και $m_2$:\\[5pt]
+\begin{tabular}{|l|c|c|c|}
+\hline
+ & $m_1$ & $m_2$ & $m$ \\
+\hline
+$\emptyset$ & 0 & 0 & 0 \\
+$\{X\}$ & 0.99 & 0 & 0\\
+$\{Y\}$ & 0.01 & 0.01 & 1\\
+$\{Z\}$ & 0 & 0.99 & 0\\
+$\{X, Y\}$ & 0 & 0 & 0\\
+$\{X, Z\}$ & 0 & 0 & 0\\
+$\{Y, Z\}$ & 0 & 0 & 0\\
+$\{X,Y,Z\}$ & 0 & 0 & 0\\
+\hline
+\end{tabular}\vskip5pt
+και $m$ είναι ο συνδυασμός του με βάση τον κανόνα του \textlatin{Dempster}.
+\begin{itemize}
+\item $K=0.99\cdot0.01+0.99\cdot0.99+0.01\cdot0.99=0.9999$
+\end{itemize}
+\item Σε περιπτώσεις ισχυρά αντικρουόμενων μαζών πίστης ο συνδυασμός τους είναι ασταθής.
+
+
+\end{itemize}
+
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{center}
+{\large Ασάφεια}
+\end{center}
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Βαθμοί συμμετοχής}
+\begin{itemize}
+\item Έστω ένα σύνολο $A$ και ένα αντικείμενο $x$.
+\item Σύμφωνα με την κλασική προσέγγιση είτε {\color{red}$x\in A$} είτε {\color{red}$x\notin A$}.
+\item Αντίστοιχα για ένα κατηγόρημα $p$: το $p(x)$ είτε {\color{red} αληθεύει} είτε {\color{red} δεν αληθεύει}.
+\begin{itemize}
+    \item Έστω $Α=\text{Ψηλοί}$ ή $p=\text{Ψηλός}$ και $x=\text{Μάριος}$.
+    \item Είτε $\text{Μάριος}\in \text{Ψηλοί}$ και $\text{Ψηλός}(\text{Μάριος})$ είτε $\text{Μάριος}\notin \text{Ψηλοί}$ και $\neg \text{Ψηλός}(\text{Μάριος})$.
+\end{itemize}
+\item Όμως ο \text{Μάριος} θα μπορούσε να είναι {\color{blue} καθόλου/λίγο/αρκετά/πολύ} ψηλός.
+\item Θα μπορούσαμε να χρησιμοποιήσουμε βαθμούς συμμετοχής/αληθείας.
+\begin{itemize}
+    \item Ο $\text{Μάριος}\in \text{Ψηλοί}$ κατά 0.8 (ύψος 1.80), και $\text{Άρης}\in \text{Ψηλοί}$ κατά 1.0 (ύψος 2.05).
+    \item Το $\text{Ψηλός}(\text{Μάριος})$ αληθεύει κατά 0.8, και το $\text{Ψηλός}(\text{Άρης})$ κατά 1.0.
+\end{itemize}
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφή σύνολα}
+\begin{itemize}
+\item H θεωρία των ασαφών συνόλων εισήχθη από τον \textlatin{Lotfi Zadeh} το 1965.
+\item Έστω ένα (κλασικό) σύνολο αντικειμένων $X$ ({\it καθολικό σύνολο} ή  {\it σύνολο αναφοράς}).
+\item Ορίζουμε μια {\it συνάρτηση συμμετοχής}:
+\[\mu_A:X\rightarrow[0,1]\]
+\item To $(X,\mu_A)$ είναι το {\it ασαφές σύνολο} $A$. (Εναλλακτικός ορισμός: $A:X\rightarrow[0,1]$).
+\item Όσο μεγαλύτερη η τιμή, τόσο περισσότερο έχει το $x$ την ιδιότητα που εκφράζει το $Α$.
+\item Αν $\mu_A:X\rightarrow \{0,1\}$ τότε το $A$ είναι κλασικό σύνολο.
+\begin{itemize}
+    \item Αν $\mu_A(x) = 1$ τότε $x\in A$,\quad αν $\mu_A(x) = 0$ τότε $x\notin A$.
+    \item H $\mu_A$ καλείται {\it χαρακτηριστική συνάρτηση}.
+\end{itemize}
+\item Αν το $X=\{x_1,\ldots,x_n\}$ είναι πεπερασμένο συχνά γράφουμε $A=\mu(x_1)/x_1+\ldots+\mu(x_n)/x_n$.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Συναρτήσεις συμμετοχής}
+\begin{itemize}
+%\item Γενικά, οι συναρτήσεις συμμετοχής είναι συνεχείς συναρτήσεις.
+\item Πρακτικά μπορεί να ορίζονται για κάποια αριθμητική {\it ιδιότητα βάσης} των αντικειμένων του $X$.
+\item Για να ορίσουμε το ασαφές σύνολο $\color{blue}\text{Ψηλοί}$ ορίζουμε μια συνάρτηση συμμετοχής επί της ιδιότητας βάσης {\color{blue}ύψος}:
+\begin{center}\vspace{-16pt}
+\begin{tikzpicture}
+\draw[very thin,color=gray] (2,0) grid (10,4);
+\draw[->] (2,0) -- (10.5,0) node[right] {\tiny ύψος (\eng{m})};
+    \foreach \x/\xtext in {2/0.5, 4/1, 6/1.5, 8/2, 10/2.5}
+    \draw[shift={(\x,0)}] (0pt,2pt) -- (0pt,-2pt) node[below] {\tiny$\xtext$};
+\draw[] (2,0) -- (2,4) node[above] {\tiny$\mu_{\text{ΜεγάλοΎψος}}$};
+    \foreach \x/\xtext in {0/0.00, 1/0.25, 2/0.50, 3/0.75, 4/1.00}
+    \draw[shift={(2,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick] (2,0) -- (6,0) -- (8,4) -- (10,4);
+\end{tikzpicture}\vspace{-8pt}
+\end{center}
+\item Άρα, αν $\text{ύψος}(\text{Μάριος}) = 1.75$, τότε $\text{Μάριος}\in\text{Ψηλοί}$ κατά $0.5$.
+\item $\text{Ψηλοί}= \{0.5/\text{Μάριος}, 0.6/\text{Γιώργος}, 0.4/\text{Κατερίνα}\}$, όπου $X=\{\text{Μάριος}, \text{Γιώργος}, \text{Κατερίνα}\}$.
+\item Η $\mu_{\text{ΜεγάλοΎψος}}$ ορίζει από μόνη της το αντίστοιχο ασαφές σύνολο επί του $X=[0.5,2.5]$.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Βασικές έννοιες}
+\begin{itemize}
+\item {\it $\alpha$-τομή} του $Α$: $^\alpha A=\{x\mid A(x)\geq\alpha\}$.
+\item  {\it Ισχυρή $\alpha$-τομή} του $Α$: $^{\alpha+} A=\{x\mid A(x)>\alpha\}$.
+\item Για $\alpha_1<\alpha_2$: ${^{\alpha_1} A} \supseteq\ {^{\alpha_2} A}$ και ${^{\alpha_1+} A} \supseteq\ {^{\alpha_2+} A}$.
+\item {\it Στήριξη} του $A$: $^{0+} A$.
+\item {\it Πυρήνας} του $A$: $^{1} A$.
+\item {\it Ύψος} του $A$: $h(A)=\max_{x\in X} A(x)$.
+\begin{itemize}
+\item To $A$ είναι {\it κανονικό} αν $h(A)=1$ και {\it υποκανονικό} όταν $h(A)<1$.
+\end{itemize}
+\item To $A$ επί του $\mathbb{R}$ είναι {\it κυρτό} αν και μόνο $Α(\lambda x_1+(1-\lambda)x_2)\geq \min[A(x_1),A(x_2)]$
+για κάθε $x_1,x_2\mathbb{R}$ και $\lambda\in[0,1]$.
+\item Σχέση υποσυνόλου:
+\begin{itemize}
+\item $A\subseteq Β$ αν και μόνο αν $\mu_A(x)\leq \mu_B(x)$ για κάθε $x\in X$.
+\end{itemize}
+\end{itemize}
+
+
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Βασικές έννοιες}
+\begin{center}
+\includegraphics[width=21cm]{fuzzy-sets-properties.png}
+\end{center}
+
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Παράδειγμα}
+\begin{itemize}
+\item Ασαφές σύνολο $A$: «αριθμός κοντά στο 2».
+
+\begin{center}
+\includegraphics[width=14cm]{fuzzy-sets-example.png}
+\end{center}
+
+%\end{itemize}
+%\end{small}
+%\vfill
+%\end{slide}
+%
+%\begin{slide}
+%\begin{small}
+%{\large Παράδειγμα}
+%\begin{itemize}
+%\item Ασαφές σύνολο $A$: «τιμή κοντά στο $r$».
+%\begin{itemize}
+%
+%\item $\displaystyle A_1(x)=\left\{\begin{array}{ll}
+%p_1(x-r)+1 & \mbox{όταν $x\in[r-1/p_1,r]$}\\
+%p_1(r-x)+1 & \mbox{όταν $x\in[r,r+1/p_1]$}\\
+%0 &\mbox{διαφορετικά}\end{array}\right.$
+%
+%\item $\displaystyle A_2(x)=\frac{1}{1+p_2(x-r)^2}$
+%
+%\item $\displaystyle A_2(x)=e^{-|p_3(x-r)|}$
+%
+%\item $\displaystyle A_4(x)=\left\{\begin{array}{ll}
+%(1+\cos(p_4\pi(x-r)))/2 & \mbox{όταν $x\in[r-1/p_4,r+1/p_4]$}\\
+%0 &\mbox{διαφορετικά}\end{array}\right.$
+%
+%\end{itemize}
+
+%\item Στην περίπτωση αυτή η ιδιότητα βάσης ταυτίζεται με τον ίδιο τον αριθμό
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Παράδειγμα}
+\begin{itemize}
+\item Ασαφή σύνολα: «άτομα χαμηλής εκπαίδευσης», «άτομα υψηλής εκπαίδευσης», «άτομα πολύ υψηλής εκπαίδευσης».
+\begin{center}
+\includegraphics[width=10cm]{fuzzy-sets-categorical.png}
+\end{center}
+
+\item Στην περίπτωση αυτή η ιδιότητα βάσης είναι το επίπεδο εκπαίδευσης (0: καθόλου εκπαίδευση, 1: δημοτικό, 2: γυμνάσιο, 3: λύκειο, 4: πτυχίο, 5: μεταπτυχιακό, 6: διδακτορικό).
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Παράδειγμα}
+\begin{itemize}
+\item Ασαφή σύνολα: «χαμηλή», «μέτρια», κλπ. θερμοκρασία.
+\begin{center}
+\includegraphics[width=14cm]{fuzzy-sets-temperature.png}
+\end{center}
+
+%\item Στην περίπτωση αυτή η ιδιότητα βάσης είναι η θερμοκρασία.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+
+\begin{slide}
+\begin{small}
+{\large Συνήθεις συναρτήσεις συμμετοχής}
+\begin{itemize}
+\item Τριγωνική: $\displaystyle\max\{\min\{\frac{x-a}{b-a},\frac{c-x}{c-b}\},0\}$
+\begin{center}
+\begin{tikzpicture}[scale=0.6]
+\draw[] (0,0) -- (8,0);
+\draw[] (0,0) -- (0,4);
+    \foreach \x/\xtext in {0/0, 4/1}
+    \draw[shift={(0,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick] (0,0) -- (2,0) -- (4,4) -- (5,0) -- (8,0);
+\end{tikzpicture}
+\end{center}
+\item Τραπεζοειδής: $\displaystyle\max\{\min\{\frac{x-a}{b-a},1,\frac{d-x}{d-c}\},0\}$
+\begin{center}
+\begin{tikzpicture}[scale=0.6]
+\draw[] (0,0) -- (8,0);
+\draw[] (0,0) -- (0,4);
+    \foreach \x/\xtext in {0/0, 4/1}
+    \draw[shift={(0,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick] (0,0) -- (1,0) -- (2,4)-- (4,4) -- (7,0) -- (8,0);
+\end{tikzpicture}
+\end{center}
+
+\end{itemize}
+
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Συνήθεις συναρτήσεις συμμετοχής}
+\begin{itemize}
+\item $R$ συνάρτηση: $\displaystyle\max\{\min\{1,\frac{d-x}{d-c}\},0\}$
+\begin{center}
+\begin{tikzpicture}[scale=0.6]
+\draw[] (0,0) -- (8,0);
+\draw[] (0,0) -- (0,4);
+    \foreach \x/\xtext in {0/0, 4/1}
+    \draw[shift={(0,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick] (0,4) -- (0,4) -- (2,4)--  (5,0) -- (8,0);
+\end{tikzpicture}
+\end{center}
+\item $L$ συνάρτηση: $\displaystyle\max\{\min\{\frac{x-a}{b-a},1\},0\}$
+\begin{center}
+\begin{tikzpicture}[scale=0.6]
+\draw[] (0,0) -- (8,0);
+\draw[] (0,0) -- (0,4);
+    \foreach \x/\xtext in {0/0, 4/1}
+    \draw[shift={(0,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick] (0,0) -- (4,0) -- (5,4)-- (8,4);
+\end{tikzpicture}
+\end{center}
+
+\end{itemize}
+
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Συναρτήσεις συμμετοχής}
+\begin{itemize}
+\item Γκαουσιανή: $\displaystyle e^{-(\frac{x-c}{\sigma})^2}$.
+\begin{center}
+\begin{tikzpicture}[domain=0:8,scale=0.6]
+\draw[] (0,0) -- (8,0);
+\draw[] (0,0) -- (0,4);
+    \foreach \x/\xtext in {0/0, 4/1}
+    \draw[shift={(0,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick,samples=150] plot[id=gauss] function{7*1/(0.8*sqrt(2*pi))*exp(-((x-4)*(x-4))/(2*0.8*0.8))};
+\end{tikzpicture}
+\end{center}
+\item Σιγμοειδής: $\displaystyle \frac{1}{1+e^{-a(x-c)}}$.
+\begin{center}
+\begin{tikzpicture}[domain=0:8,scale=0.6]
+\draw[] (0,0) -- (8,0);
+\draw[] (0,0) -- (0,4);
+    \foreach \x/\xtext in {0/0, 4/1}
+    \draw[shift={(0,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick,samples=150] plot[id=sigma] function{1/(0.25 +1*exp(2-x))};
+\end{tikzpicture}
+\end{center}
+%\item {\it $\alpha$-τομή} του $Α$: $^\alpha A=\{x\mid A(x)\geq\alpha\}$.
+%\item  {\it Ισχυρή $\alpha$-τομή} του $Α$: $^{\alpha+} A=\{x\mid A(x)>\alpha\}$.
+\item Η συνάρτηση συμμετοχής καθορίζεται είτε με βάση τη γνώση εμπειρογνωμόνων είτε με χρήση πραγματικών δεδομένων και τεχνικών μηχανικής μάθησης.
+\end{itemize}
+
+\end{small}
+\vfill
+\end{slide}
+
+
+
+
+\begin{slide}
+\begin{small}
+{\large Πράξεις ασαφών συνόλων}
+\begin{itemize}
+\item {\it Σύνηθες συμπλήρωμα}: $\bar{A}(x) = 1- A(x)$
+\item {\it Συνήθης ένωση}: $(A\cup B)(x) = \max\{A(x),B(x)\}$
+\begin{center}
+\begin{tikzpicture}
+\draw[->] (0,0) -- (4,0);
+\draw[] (0,0) -- (0,2);
+    \foreach \x/\xtext in {0/0, 2/1}
+    \draw[shift={(0,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick] (0,2) -- (0.5,2) -- (2,0) -- (4,0) node[above] {$A$};
+
+\draw[->] (6,0) -- (10,0);
+\draw[] (6,0) -- (6,2);
+    \foreach \x/\xtext in {0/0, 2/1}
+    \draw[shift={(0,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick] (6,0) -- (7,0) -- (9,1.5) -- (10,1.5) node[above] {$Β$};
+
+\draw[->] (14,0) -- (18,0);
+\draw[] (14,0) -- (14,2);
+    \foreach \x/\xtext in {0/0, 2/1}
+    \draw[shift={(14,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+%\draw[thick] (14,2) -- (14.5,2) -- (16,0) -- (18,0) node[above] {A};
+%\draw[thick] (14,0) -- (15,0) -- (17,1.5) -- (18,1.5) node[above] {A};
+\draw[thick,red] (14,2) -- (14.5,2) -- (15.64,0.48) -- (17,1.5) -- (18,1.5) node[above] {$A\cup B$};
+\end{tikzpicture}
+\end{center}
+\item {\it Συνήθης τομή}: $(A\cap B)(x) = \min\{A(x),B(x)\}$
+\begin{center}
+\begin{tikzpicture}
+\draw[->] (0,0) -- (4,0);
+\draw[] (0,0) -- (0,2);
+    \foreach \x/\xtext in {0/0, 2/1}
+    \draw[shift={(0,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick] (0,2) -- (0.5,2) -- (2,0) -- (4,0) node[above] {$A$};
+
+\draw[->] (6,0) -- (10,0);
+\draw[] (6,0) -- (6,2);
+    \foreach \x/\xtext in {0/0, 2/1}
+    \draw[shift={(0,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick] (6,0) -- (7,0) -- (9,1.5) -- (10,1.5) node[above] {$B$};
+
+\draw[->] (14,0) -- (18,0);
+\draw[] (14,0) -- (14,2);
+    \foreach \x/\xtext in {0/0, 2/1}
+    \draw[shift={(14,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+%\draw[thick] (14,2) -- (14.5,2) -- (16,0) -- (18,0) node[above] {A};
+%\draw[thick] (14,0) -- (15,0) -- (17,1.5) -- (18,1.5) node[above] {A};
+\draw[thick,red] (14,0) -- (15,0) -- (15.64,0.48) -- (16,0) -- (18,0) node[above] {$A\cap B$};
+\end{tikzpicture}
+\end{center}
+%\item Εναλλακτικές: $(A\cup B)(x) = A(x)+B(x)-A(x)B(x)$\\
+%\phantom{x}
+%\hskip3.05cm$(A\cap B)(x) = A(x)B(x)$ ({\color{blue}αλγεβρική ένωση και τομή}).
+\item Το σύνηθες συμπλήρωμα, ένωση και τομή είναι ένας τρόπος να γενικευτούν οι αντίστοιχες κλασικές πράξεις.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφές συμπλήρωμα}
+\begin{itemize}
+\item Μια συνάρτηση $c:[0,1]\rightarrow [0,1]$ τέτοια ώστε
+\begin{itemize}
+\item $c(0)=1$ και $c(1)=0$ (οριακές συνθήκες).
+\item Για κάθε $a,b\in [0,1]$, αν $a\leq b$, τότε $c(a)\geq c(b)$ (μονοτονία).
+\item (επιθυμητή ιδιότητα) $c$ συνεχής.
+\item (επιθυμητή ιδιότητα) $c(c(a))=a$ για κάθε $a\in[0,1]$ (ενελικτικότητα).
+\end{itemize}
+\item $\bar{A}(x)=c(A(x))$.
+\item Σύνηθες συμπλήρωμα $c_s(a)=1-a$.
+\item Συμπλήρωμα \textlatin{Sugeno}: $\displaystyle c_\lambda(a)=\frac{1-a}{1+\lambda a}$ $(\lambda > -1)$.
+\item Συμπλήρωμα \textlatin{Yager}: $c_w(a)=(1-a^w)^{1/w}$ ($w>0$)
+
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφές συμπλήρωμα}
+\begin{center}
+\includegraphics[width=23cm]{fuzzy-complement.png}
+\end{center}
+\begin{itemize}
+\item Σημείο ισορροπίας ασαφούς συμπληρώματος: $a$ τέτοιο ώστε $c(a)=a$.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Ασαφής τομή: $t$-νόρμα}
+\begin{itemize}
+\item Μια συνάρτηση $i:[0,1]\times[0,1]\rightarrow [0,1]$ τέτοια ώστε
+\begin{enumerate}
+\item $i(a,1)=a$ (οριακή συνθήκη).
+\item αν $b\leq d$ τότε $i(a,b)\leq i(a,d)$ (μονοτονία).
+\item $i(a,b)= i(b,a)$ αντιμεταθετικότητα.
+\item $i(a,i(b,d))= i(i(a,b),d)$ (προσεταιριστικότητα).
+\item (επιθυμητή ιδιότητα) $i$ συνεχής.
+\item (επιθυμητή ιδιότητα) $i(a,a)< a$ για κάθε $a\in[0,1]$ (υποταυτοδυναμία).
+\item (επιθυμητή ιδιότητα) αν $a_1<a_2$ και $b_1<b_2$ τότε $i(a_1,b_1)<i(a_2,b_2)$  (αυστηρή μονοτονία).
+\end{enumerate}
+\item $(A\cap B)(x)=i(A(x),B(x))$.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Ασαφής τομή: $t$-νόρμα}
+\begin{itemize}
+\item Συνήθης τομή: $i(a,b) = \min\{a,b\}$
+\item Αλγεβρικό γινόμενο: $i(a,b) = ab$
+\item Φραγμένη διαφορά: $i(a,b)=\max(0,a+b-1)$.
+\item Δραστική τομή : $i_{min}(a,b)=\left\{\begin{array}{ll}
+a&\mbox{όταν $b=1$}\\
+b&\mbox{όταν $a=1$}\\
+0&\mbox{διαφορετικά}\end{array}\right.$
+\item Τομή \textlatin{Schweizer and Sklar}: $i_p(a,b)=\max\{0,a^p+b^p-1)\}^{1/p}$ ($p\neq 0$).
+\item Τομή \textlatin{Yager}: $i_w(a,b)=1-\min\{1,[(1-a)^w+(1-b)^w]^{1/w}\}$ ($w>0$).
+\item Τομή \textlatin{Frank}: $\displaystyle i_s(a,b)=\log_s\left[ 1+ \frac{(s^a-1)(s^b-1)}{s-1}\right]$ ($s >0,s\neq1$).
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφής τομή: $t$-νόρμα}
+\begin{center}
+\vskip20pt
+\includegraphics[width=25cm]{fuzzy-intersection.png}
+\end{center}
+\begin{itemize}
+\item $i_{min}(a,b)\leq i(a,b)\leq \min\{a,b\}$
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Ασαφής ένωση: $s$-νόρμα (ή $t$-συννόρμα)}
+\begin{itemize}
+\item Μια συνάρτηση $u:[0,1]\times[0,1]\rightarrow [0,1]$ τέτοια ώστε
+\begin{enumerate}
+\item $u(a,0)=a$ (οριακή συνθήκη).
+\item αν $b\leq d$ τότε $u(a,b)\leq u(a,d)$ (μονοτονία).
+\item $u(a,b)= u(b,a)$ αντιμεταθετικότητα.
+\item $u(a,i(b,d))= u(u(a,b),d)$ (προσεταιριστικότητα).
+\item (επιθυμητή ιδιότητα) $u$ συνεχής.
+\item (επιθυμητή ιδιότητα) $u(a,a)> a$ για κάθε $a\in[0,1]$ (υπερταυτοδυναμία).
+\item (επιθυμητή ιδιότητα) αν $a_1<a_2$ και $b_1<b_2$ τότε $u(a_1,b_1)<u(a_2,b_2)$  (αυστηρή μονοτονία).
+\end{enumerate}
+\item $(A\cup B)(x)=u(A(x),B(x))$.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Ασαφής ένωση: $s$-νόρμα}
+\begin{itemize}
+\item Συνήθης ένωση: $u(a,b) = \max\{a,b\}$
+\item Αλγεβρικό άθροισμα: $u(a,b) = a+b-ab$
+\item Φραγμένο άθροισμα: $u(a,b)=\min(1,a+b)$.
+\item Δραστική ένωση : $u_{max}(a,b)=\left\{\begin{array}{ll}
+a&\mbox{όταν $b=0$}\\
+b&\mbox{όταν $a=0$}\\
+1&\mbox{διαφορετικά}\end{array}\right.$
+\item Τομή \textlatin{Schweizer and Sklar}: $i_p(a,b)=1-\max\{0,(1-a)^p+(1-b)^p-1)\}^{1/p}$ ($p\neq 0$).
+\item Τομή \textlatin{Yager}: $i_w(a,b)=\min\{1,[a^w+b^w]^{1/w}\}$ ($w>0$).
+\item Τομή \textlatin{Frank}: $\displaystyle i_s(a,b)=1-\log_s\left[ 1+ \frac{(s^{1-a}-1)(s^{1-b}-1)}{s-1}\right]$ ($s >0,s\neq1$).
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφής ένωση: $s$-νόρμα}
+\begin{center}
+\vskip20pt
+\includegraphics[width=25cm]{fuzzy-union.png}
+\end{center}
+\begin{itemize}
+\item $\max\{a,b\} \leq u(a,b)\leq i_{min}(a,b)$
+\end{itemize}
+
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ιδιότητες}
+\begin{itemize}
+\item Εξ ορισμού ισχύουν:
+\begin{itemize}
+\item Αντιμεταθετικότητα: $A\cup B = B\cup A$,  $A\cap B = B\cap A$.
+\item Προσεταιριστικότητα : $A\cup (B\cup C) = (A\cup B)\cup C$,  $A\cap (B\cap C) = (A\cap B)\cap C$.
+\item Ουδέτερο στοιχείο: $A\cup \emptyset = A$,  $A\cap X = A$
+\item Απορροφητικό στοιχείο: $A\cup X = X$,  $A\cap \emptyset = \emptyset$
+\end{itemize}
+
+\item Οι άλλες ιδιότητες των κλασικών συνόλων που εμπλέκουν περισσότερες από μία πράξεις εν γένει δεν ισχύουν για αυθαίρετους συνδυασμούς $t$-νορμών, $s$-νορμών και συμπληρωμάτων.
+
+\item Μια $t$-νόρμα $i$ και $s$-νόρμα $u$ είναι {\it δυικές} ως προς το ασαφές συμπλήρωμα $c$ αν και μόνο αν:
+\[c(i(a,b)) = u(c(a),c(b))\quad\text{και}\quad c(u(a,b)) = i(c(a),c(b))\]
+δηλαδή αν ισχύουν οι κανόνες \textlatin{De Morgan}: $\overline{A\cap B} = \bar{A}\cup\bar{B}$, $\overline{A\cup B}. = \bar{A}\cap\bar{B}$
+\end{itemize}
+
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ιδιότητες}
+\begin{itemize}
+\item {\it Δυϊκές τριάδες} $\langle i,u,c\rangle$:
+\begin{itemize}
+\item $\langle \min\{a,b\},\max\{a,b\}, 1-a\rangle$\quad\qquad ({\it συνήθεις τελεστές})
+\item $\langle ab, a+b-ab, 1-a\rangle$
+\item $\langle \max\{0,a+b-1\}, \min\{1,a+b\}, 1-a\rangle$
+\item $\langle i_{min}(a,b), u_{max}(a,b), 1-a\rangle$
+\end{itemize}
+
+\item Εν γένει δεν ισχύουν:
+\begin{enumerate}
+\item Κανόνας της αντίφασης: $A\cap \bar{A} = \emptyset$
+\item Κανόνας του αποκλεισμού του τρίτου: $A\cup \bar{A} = Ι$, όπου $I(x)=1$ για κάθε $x\in X$
+\item Επιμεριστικότητα: $Α\cap (B\cup C)= (A\cap B) \cup (A\cap C)$
+\end{enumerate}
+\begin{itemize}
+\item Θεώρημα: Αν μια δυϊκή τριάδα ικανοποιεί τις (1) και (2) δεν ικανοποιεί την (3).
+\item Οι συνήθεις πράξεις ικανοποιούν την (3).
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφείς σχέσεις}
+\begin{itemize}
+\item Μια (κλασική) σχέση μεταξύ των συνόλων $X_1,\ldots, X_n$ είναι ένα υποσύνολο του $X_1\times\ldots\times X_n$.
+\item Μια {\it ασαφής σχέση} επί των συνόλων $X_1,\ldots, X_n$ είναι ένα ασαφές σύνολο επί του $X_1\times\ldots\times X_n$.
+    \[R(X_1,\ldots X_n): X_1\times\ldots \times X_n\rightarrow [0,1]\]
+\item Ιδιαίτερα χρήσιμες είναι οι {\it δυαδικές} ασαφείς σχέσεις.
+\begin{itemize}
+\item Αναπαριστώνται με έναν {\it ασαφή σχεσιακό πίνακα}.
+\end{itemize}
+\item Παραδείγματα
+\begin{itemize}
+\item Πολύ μακριά: $P(U,V)$\vspace{-12pt}
+\[
+\begin{array}{cccc}
+&&V\\
+&&\text{Βοστώνη}&\text{Χονγκ Κονγκ}\\
+U&\text{Σαν Φρανσίσκο}& 0.3 &0.9\\
+&\text{Χονγκ Κονγκ}& 1 & 0\\
+&\text{Τόκυο}& 0.95 & 0.1\\
+\end{array}\]
+\item Προσεγγιστικά ίσος: $P(\mathbb{R},\mathbb{R})$ με $P(x,y)=e^{-(x-y)^2}$
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Σύνθεση ασαφών σχέσεων}
+\begin{itemize}
+\item Σύνθεση κλασικών σχέσεων : $P\circ Q = \{ \langle x,z\rangle \mid \langle x,y\rangle\in P \text{ και } \langle y,z\rangle\in Q\}$
+
+\item Αν $P(X,Y)$ και $Q(Y,Z)$ είναι δύο δυαδικές ασαφείς σχέσεις επί των $X\times Y$ και $Y\times Z$, αντίστοιχα, τότε η {\it σύνθεσή} τους είναι η ασαφής σχέση
+\[(P\circ Q)(x,z) = \sup_{y\in Y}\, i(P(x,y), Q(y,z))\]
+επί του $X\times Z$, όπου $i$ είναι μια $t$-νόρμα.
+
+\item Διάφορες συνθέσεις ανάλογα με την επιλογή της $i$
+\begin{itemize}
+\item Σύνθεση \textlatin{sup-min}: $(P\circ Q)(x,z) = \sup_{y\in Y}\, \min\{P(x,y), Q(y,z)\}$
+\item Σύνθεση \textlatin{sup-product}: $(P\circ Q)(x,z) = \sup_{y\in Y}\, P(x,y)\cdot Q(y,z)$
+\end{itemize}
+
+\item Η σύνθεση δυϊκών σχέσεων μπορεί να υπολογιστεί ως το γινομένο σχεσιακών πινάκων.
+\begin{itemize}
+\item Πολλαπλασιασμός: $\min$ ή $\cdot$
+\item Πρόσθεση: $\max$
+\end{itemize}
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+%\begin{slide}
+%\begin{small}
+%{\large Ασαφείς αριθμοί}
+%\begin{itemize}
+%\item Ειδική περίπτωση ασαφών συνόλων.
+%
+%\item Ασαφή σύνολα $Α$ με συνάρτηση συμμετοχής: \[\mathbb{R}\rightarrow[0,1]\]
+%\begin{itemize}
+%    \item $^1Α\neq\emptyset$
+%    \item Τα $^\alpha Α$, για $\alpha\in(0,1]$, και το $^{0+}Α$ πρέπει να είναι κλειστά σύνολα.
+%\end{itemize}
+%Οι ιδιότητες αυτές διασφαλίζουν τη δυνατότητα πραγματοποίησης πράξεων μεταξύ ασαφών αριθμών (ως πράξεων μεταξύ κλειστών συνόλων).
+%%Αντιπροσωπεύουν αριθμούς «πλησίον» κάποιας συγκεκριμένης αριθμητικής τιμής.
+%\item Ασαφείς αριθμοί για θερμοκρασίες:
+%\begin{itemize}
+%\item $A = \{ 0/{-30}^\circ C,\, 0.1/{-20}^\circ C,\, 0.5/{-10}^\circ C,\, 1/0^\circ C,\, 0.5/10^\circ C,\, 0.1/20^\circ C,\, 0/30^\circ C \}$\\        {\color{red}Θερμοκρασία πλησίον των $0^\circ$}.
+%\item $B = \{ 0/10^\circ C,\, 0.1/20^\circ C,\, 0.5/30^\circ C,\, 0.9/40^\circ C,\, 1/50^\circ C,\, 1/60^\circ C\}$\\        {\color{red}Θερμοκρασία άνω των  $50^\circ$}.
+%\end{itemize}
+%%\item Δεν χρειάζεται η μεσολάβηση της ιδιότητας βάσης: ο ίδιος ο αριθμός φέρει την ιδιότητά του.
+%\end{itemize}
+%
+%\end{small}
+%\vfill
+%\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Συμπερασμός στη λογική}
+\begin{itemize}
+\item Σε μία λογική (προτασιακή/πρώτης τάξης) έχουμε
+\begin{itemize}
+\item {\it Σύνταξη}: Μια γλώσσα κατασκευής προτάσεων/εκφράσεων  (π.χ. $p$, $p(a)$, $\exists x. p(x)$, $p\rightarrow q$).
+\item {\it Πεδίο τιμών αληθείας}: $\{\mathrm{True},\mathrm{False}\}$.
+\item {\it Σημασιολογία}: Μηχανισμός απεικόνισης των πρότασεων/έκφρασεων στο πεδίο τιμών αληθείας (ερμηνεία).
+\end{itemize}
+\item Κάποιες προτάσεις αληθεύουν πάντα (σε κάθε ερμηνεία): {\it ταυτολογίες}.
+\begin{itemize}
+\item $p\vee \neg p$
+\item $(p \wedge (p\rightarrow q))\rightarrow q$
+\end{itemize}
+
+\item Ορίζουμε ένα σύνολο προτάσεων/εκφράσεων ({\it αξιώματα}) που θεωρούμε ότι αληθεύουν.
+\begin{itemize}
+\item $p$
+\item $p\rightarrow q$
+\end{itemize}
+
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Συμπερασμός στη λογική}
+\begin{itemize}
+\item Πραγματοποιούμε συλλογιστική, δηλαδή συμπεραίνουμε νέες αληθείς προτάσεις από τα αξιώματα.
+\begin{itemize}
+\item Χρησιμοποιούμε {\it κανόνες συμπερασμού}:
+\begin{center}
+\begin{tabular}{l@{\qquad}r}
+\begin{tabular}{ll}
+$p$& $p\rightarrow q$\\
+\hline
+\multicolumn{2}{c}{$q$}
+\end{tabular}&\textlatin{modus ponens} (τρόπος του θέτειν)\\
+\begin{tabular}{ll}
+$\neg q$& $p\rightarrow q$\\
+\hline
+\multicolumn{2}{c}{$\neg p$}
+\end{tabular}&\textlatin{modus tollens} (τρόπος του αίρειν)\\
+\begin{tabular}{ll}
+$p\rightarrow q$& $q\rightarrow r$\\
+\hline
+\multicolumn{2}{c}{$p\rightarrow r$}
+\end{tabular}&υποθετικός συλλογισμός
+\end{tabular}
+\end{center}
+\item Οι κανόνες συμπερασμού στηρίζονται σε «χρήσιμες» {\it ταυτολογίες}.
+\begin{align*}
+(p \wedge (p\rightarrow q))&\rightarrow q\\
+(\neg q \wedge p \rightarrow q)&\rightarrow \neg p\\
+((p\rightarrow q) \wedge (q\rightarrow r))&\rightarrow (p\rightarrow r)
+\end{align*}
+
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Πολύτιμες λογικές}
+\begin{itemize}
+\item Διεύρυνση του πεδίου τιμών αληθείας από το $\{0,1\}$.
+\begin{itemize}
+\item $\displaystyle T_n=\left\{0, \frac{1}{n-1}, \frac{2}{n-2},\ldots,\frac{n-2}{n-1},1\right\}$, για $n\geq 2$.
+\item Ειδικές περιπτώσεις: $T_2=\{0,1\}$, $T_3=\{0,\frac{1}{2},1\}$, $T_\infty=\mathbb{Q}([0,1])$.
+\item Απειρότιμες λογικές: $T=[0,1]$.
+\end{itemize}
+\item Πολύτιμες/Απειρότιμες λογικές:
+\begin{itemize}
+\item Μια ερμηνεία απεικονίζει κάθε πρόταση/έκφραση σε έναν αριθμό $\in Τ$.
+\end{itemize}
+\item Πώς μπορούμε να ορίσουμε τελεστές και μια συλλογιστική διαδικασία?
+%\begin{itemize}
+%\item Επιθυμούμε να έχουμε συλλογιστική διαδικασία.
+%\item Οι κανόνες συλλογιστικής στηρίζονται σε ταυτολογίες (π.χ. $(p \wedge (p\rightarrow q))\rightarrow q$)
+%\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Λογικές \textlatin{Lukasiewitcz} $L_n$}
+\begin{itemize}
+\item $n$ τιμές αληθείας: $L_2\mapsto Τ_2$, $\ldots$, $L_{\infty}\mapsto T_{\infty}$,\quad $L_1=L_{\aleph_1}\mapsto [0,1]$
+
+\item Βασικοί τελεστές:
+\begin{align*}
+&\bar{a}\\
+&a\rightarrow b
+\end{align*}
+\item Παράγωγοι τελεστές:
+\begin{align*}
+a\vee b &= (a\rightarrow b)\rightarrow b & a\oplus b &= \neg a\rightarrow b\\
+a\wedge b &= \neg(\neg a\vee \neg b) & a\otimes  b &= \neg(a\rightarrow \neg b)\\
+a\leftrightarrow b &= (a\rightarrow b)\wedge (b\rightarrow a)& a\ominus b &= \neg(a\rightarrow b)
+\end{align*}
+\item Σημασιολογία τελεστών:
+\begin{align*}
+\bar{a}&=1-a\\
+a\rightarrow b &= \min\{1,1-a+b\}
+\end{align*}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Λογική \textlatin{Lukasiewitcz}}
+\begin{itemize}
+\item {\it Σημασιολογική συνέπεια}
+\begin{itemize}
+\item $\mathcal{K} \models \phi$, όπου $\mathcal{K}$ ένα σύνολο αξιωμάτων, αν $T(\phi)=1$ για κάθε ερμηνεία με $T(\mathcal{K})=1$.
+\end{itemize}
+
+
+\item {\it Συντακτική συνέπεια}
+\begin{itemize}
+\item $\mathcal{K} \vdash \phi$, όπου $\mathcal{K}$ ένα σύνολο αξιωμάτων, αν η $\phi$ προκύπτει από τα $\mathcal{A}$, $\mathcal{K}$, μέσω του \textlatin{modus ponens}.
+
+\end{itemize}
+
+\item Η λογική \textlatin{Lukasiewitcz} είναι (η μόνη) {\it αξιωματικοποιήσιμη} πολύτιμη/απειρότιμη λογική:
+\[ \text{υπάρχει σύνολο αξιωμάτων $\mathcal{A}$: } \mathcal{K}\vdash \phi \text{ αν και μόνο αν } \mathcal{K}\models \phi \]
+
+\item Αξιώματα $\mathcal{A}$:
+\begin{align*}
+A&\rightarrow (B\rightarrow A)\\
+(A\rightarrow B)&\rightarrow ((B\rightarrow C)\rightarrow (A\rightarrow C))\\
+((A\rightarrow B)\rightarrow B)&\rightarrow ((B\rightarrow A)\rightarrow A)\\
+(\neg B\rightarrow \neg A)&\rightarrow (A\rightarrow B)
+\end{align*}
+
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+%\begin{slide}
+%\begin{small}
+%{\large Λογικές \textlatin{Lukasiewitcz} $L_n$}
+%\begin{itemize}
+%\item Βασικοί τελεστές:
+%\begin{align*}
+%&\bar{a}\\
+%&a\rightarrow b
+%\end{align*}
+%\item Παράγωγοι τελεστές:
+%\begin{align*}
+%a\vee b &= (a\rightarrow b)\rightarrow b\\
+%a\wedge b &= \neg(\neg a\vee \neg b)\\
+%a\leftrightarrow b &= (a\rightarrow b)\wedge (b\rightarrow a)\\
+%a\oplus b &= \neg a\rightarrow b\\
+%a\odot  b &= \neg(a\rightarrow \neg b)\\
+%a\ominus b &= \neg(a\rightarrow b)
+%\end{align*}
+%\end{itemize}
+%\end{small}
+%\vfill
+%\end{slide}
+%
+%\begin{slide}
+%\begin{small}
+%{\large Λογική \textlatin{Lukasiewitcz}}
+%\begin{itemize}
+%\item Σημασιολογία τελεστών:
+%\begin{align*}
+%\bar{a}&=1-a\\
+%a\Rightarrow b &= \min\{1,1+b-a\}
+%\end{align*}
+%\item {\it Σημασιολογική αλήθεια}: $\models \phi$ αν $T(\phi)=1$ για κάθε ερμηνεία.
+%
+%
+%\item Αξιώματα:
+%\begin{align*}
+%A&\rightarrow (B\rightarrow A)\\
+%(A\rightarrow B)&\rightarrow ((B\rightarrow C)\rightarrow (A\rightarrow C))\\
+%((A\rightarrow B)\rightarrow B)&\rightarrow ((B\rightarrow A)\rightarrow A)\\
+%(\neg B\rightarrow \neg A)&\rightarrow (A\rightarrow B)
+%\end{align*}
+%
+%\item {\it Συντακτική αλήθεια}: $\vdash \phi$ αν η $\phi$ προκύπτει από τα αξιώματα.
+%\item Η λογική \textlatin{Lukasiewitcz} είναι η μόνη {\it αξιωματικοποιήσιμη} πολύτιμη λογική:
+%\[ \text{υπάρχει σύνολο αξιωμάτων: } \vdash \phi \text{ αν και μόνο αν} \models \phi \]
+%\end{itemize}
+%\end{small}
+%\vfill
+%\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Απειρότιμες λογικές και ασαφή σύνολα}
+\begin{itemize}
+\item H συνήθης λογική \textlatin{Lukasiewitcz} $L_1$ είναι ισομορφική με τη θεωρία ασαφών συνόλων με τους συνήθεις τελεστές:
+\begin{itemize}
+\item Σύνολο αναφοράς $X$.
+\item Ασαφές σύνολο $A:X\rightarrow[0,1]$.
+\item Κατηγόρημα $p$, όπου το $p(x)$ ερμηνεύεται ως $x\in A$.
+\[A(x)\cong T(p(x))\]
+\end{itemize}
+\item Π.χ.\vspace{-10pt}
+\begin{align*}
+\mbox{$\text{Ψηλοί}(\text{Μάριος})$}&\qquad \mbox{$T(\text{Ψηλός}(\text{Μάριος}))$}\\
+\mbox{$(\text{Ψηλοί}\cup \text{Έξυπνοι})(\text{Μάριος})$} &\mbox{$\qquad T(\text{Ψηλός}(\text{Μάριος})\vee\text{Έξυπνος}(\text{Μάριος}))$}
+\end{align*}
+
+\end{itemize}
+
+\end{small}
+\vfill
+\end{slide}
+
+
+
+\begin{slide}
+\begin{small}
+{\large Απειρότιμες λογικές και ασαφής λογική}
+\begin{itemize}
+\item Σε μια \textcolor{red}{πολύτιμη/απειρότιμη λογική} στόχος της συλλογιστική διαδικασίας είναι ο συμπερασμός νέων \textcolor{red}{αληθών προτάσεων}.
+\begin{center}
+\begin{tabular}{ll}
+$p$& $p\rightarrow q$\\
+\hline
+\multicolumn{2}{c}{$q$}
+\end{tabular}
+\end{center}
+
+\item Σε μια \textcolor{red}{ασαφή λογική} στόχος της συλλογιστική διαδικασίας είναι ο συμπερασμός νέων \textcolor{red}{προτάσεων} και του \textcolor{red}{βαθμού αληθείας} τους.
+
+\begin{center}
+\begin{tabular}{ll}
+$(p, u)$& $(p\rightarrow q, v)$\\
+\hline
+\multicolumn{2}{c}{$(q, w)$}
+\end{tabular}
+\end{center}
+(όπου $w=\max\{0,u+v-1\}$ στη συνήθη λογική \textlatin{Lukasiewitcz})
+
+Γενίκευση των απειρότιμων λογικών: {\it ασαφής λογική υπό τη στενή έννοια}.
+
+\item {\it Aσαφής λογική υπό την ευρεία έννοια}: Ένας μηχανισμός που χρησιμοποιεί τη θεωρία ασαφών συνόλων για την ανάπτυξη εννοιών και αρχών για την αναπαράσταση και χειρισμό γνώσης που εκφράζονται σε φυσική γλώσσα (\textcolor{red}{λεκτικά}).
+
+    %ormal theory of nat-ural human reasoning that would include mathematical models of special expressionsin natural language with regard to their vagueness
+
+%fuzzy logic is viewed as a system of concepts, principles, and methods for dealing with modes of reasoning that are approximate rather than exact.
+
+\end{itemize}
+
+\end{small}
+\vfill
+\end{slide}
+
+
+
+
+\begin{slide}
+\begin{small}
+{\large Ασαφή σύνολα ως λεκτικές τιμές}
+\begin{itemize}
+\item Ένα αντικείμενο του $X$ μπορεί να ανήκει σε διάφορα ασαφή σύνολα βάσει μιας ιδιότητας βάσης.
+\begin{center}
+\begin{tikzpicture}
+\draw[very thin,color=gray] (2,0) grid (10,4);
+\draw[->] (2,0) -- (10.5,0) node[right] {\tiny ύψος (\eng{m})};
+    \foreach \x/\xtext in {2/0.5, 4/1, 6/1.5, 8/2, 10/2.5}
+    \draw[shift={(\x,0)}] (0pt,2pt) -- (0pt,-2pt) node[below] {\tiny$\xtext$};
+\draw[] (2,0) -- (2,4) node[above] {\tiny$\mu$};
+    \foreach \x/\xtext in {0/0.00, 1/0.25, 2/0.50, 3/0.75, 4/1.00}
+    \draw[shift={(2,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick,red] (2,4) -- (4,4) -- (7,0) -- (10,0) node[above] {Κοντός};
+\draw[thick,blue] (2,0) -- (6,0) -- (7,4) -- (8,0) -- (10,0) node[below] {Μέτριος};
+\draw[thick,green] (2,0) -- (7,0) -- (8,4) -- (10,4) node[above] {Ψηλός};
+\end{tikzpicture}
+\end{center}
+\begin{itemize}
+\item Αν $\text{ύψος}(\text{Μάριος}) = 1.85$, τότε $\text{Κοντός}(\text{Μ.}) = 0$, $\text{Μέτριος}(\text{Μ.}) = 0.55$, $\text{Ψηλός}(\text{Μ.})= 0.45$.
+\item Αν $\text{ύψος}(\text{Μάριος}) = 1.70$, τότε $\text{Κοντός}(\text{Μ.}) = 0.05$, $\text{Μέτριος}(\text{Μ.}) = 0.95$, $\text{Ψηλός}(\text{Μ.}) = 0.0$.
+\end{itemize}
+\item Τα ασαφή αυτά σύνολα αποτελούν συνήθως λεκτικούς χαρακτηρισμούς του αντικειμένου που εξαρτώνται από την ιδιότητα βάσης.
+%\item Μια συλλογή ασαφών συνόλων $\{A_1,\ldots,A_k\}$ επί του $X$ με $\sum_{i=1}^k\mu_{A_i}(x)=1$ για κάθε $x\in X$ είναι μια {\it ασαφής διαμέριση} του $X$.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Λεκτικές μεταβλητές}
+\begin{itemize}
+%\item O {\it Μάριος} είναι ψηλός/κοντός.
+%\begin{itemize}
+%    \item $\text{Μάριος}\in X$.
+%    \item Πόσο ψηλός είναι ο Μάριος? $\text{Ψηλός}(\text{Μάριος})$.
+%    \item To Ψηλός είναι ασαφές σύνολο.
+%\end{itemize}
+\item Η {\it θερμοκρασία} είναι 30$^o\mathrm{C}$.
+\begin{itemize}
+    \item Η θερμοκρασία είναι μια μεταβλητή που παίρνει αριθμητικές τιμές (από το $X$).
+\end{itemize}
+\item Η {\it θερμοκρασία} είναι υψηλή/χαμηλή.
+\begin{itemize}
+    \item Η θερμοκρασία είναι μια μεταβλητή που παίρνει ως τιμές λεκτικούς χαρακτηρισμούς.
+    \item Πόσο υψηλή είναι μια συγκεκριμένη θερμοκρασία $c$? $\text{Υψηλή}(c)$.
+    \item To Υψηλή είναι ασαφές σύνολο.
+%    \item Η θερμοκρασία παίρνει ως τιμή ένα ασαφές σύνολο.
+\end{itemize}
+\item Μια μεταβλητή που παίρνει ως τιμές λεκτικούς χαρακτηρισμούς που αντιπροσωπεύουν ασαφή σύνολα ορισμένα επί του συνόλου αναφοράς καλείται {\it λεκτική μεταβλητή}.
+\end{itemize}
+\begin{center}
+\includegraphics[width=7cm]{fuzzy-linguistic-variable.png}
+\end{center}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Λεκτικές μεταβλητές}
+\begin{itemize}
+\item Μια ποσότητα που παίρνει λεκτικές αντί αριθμητικών τιμών είναι {\it λεκτική μεταβλητή}.
+\begin{itemize}
+\item Όνομα: Θερμοκρασία
+\item Σύνολο λεκτικών τιμών $T$ (χαρακτηρισμών της Θερμοκρασία): Χαμηλή, Μέτρια, Υψηλή.
+\item Πεδίο τιμών ιδιότητας βάσης $X$: $[0,40]$ (βαθμοί)
+\item Κανόνας αντιστοίχισης $m$ κάθε λεκτικού όρου $t$ στο νόημά του $m(t)$, δηλαδή σε ένα ασαφές σύνολο επί της ιδιότητας βάσης: $m: T \rightarrow \mathcal{F}(X)$
+\end{itemize}
+\begin{center}
+\begin{tikzpicture}
+\node[shape=rectangle,draw=white] (re) at (-1.5,2) {{\bf Θερμοκρασία}};
+
+\draw[very thin,color=gray] (2,0) grid (10,4);
+\draw[->] (2,0) -- (10.5,0) node[below] {\tiny βαθμοί};
+    \foreach \x/\xtext in {2/0, 4/10, 6/20, 8/30, 10/40}
+    \draw[shift={(\x,0)}] (0pt,2pt) -- (0pt,-2pt) node[below] {\tiny$\xtext$};
+
+    \foreach \x/\xtext in {0/0.00, 1/0.25, 2/0.50, 3/0.75, 4/1.00}
+    \draw[shift={(2,\x)}] (2pt,0pt) -- (-2pt,0pt) node[left] {\tiny$\xtext$};
+\draw[thick,red] (2,4) -- (4,4) -- (5,0) -- (10,0) node[above] {Χαμηλή};
+\draw[thick,blue] (2,0) -- (4,0) -- (5,4) -- (7,4) -- (8,0) -- (10,0) node[below] {Μέτρια};
+\draw[thick,green] (2,0) -- (7,0) -- (8,4) -- (10,4) node[above] {Υψηλή};
+\end{tikzpicture}
+\end{center}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Λεκτικοί τροποποιητές}
+\begin{itemize}
+\item Οι λεκτικές τιμές μπορεί να συνοδεύονται από χαρακτηρισμούς (πολύ, σχετικά, λίγο, κλπ).
+\item Ένας χαρακτηρισμός που εφαρμόζεται σε μια λεκτική τιμή $Α$ (ασαφές σύνολο) είναι ένας {\it λεκτικός τροποποιητής $Η$}\vspace{-4pt}
+\[\mbox{$Η$ $Α$}\]
+\item Το αποτέλεσμα είναι ένα νέο ασαφές σύνολο.
+\item Ο $H$ υλοποιείται από μια πράξη $h:[0,1]\rightarrow [0,1]$
+\[Η A(x)=h(A(x))\]
+\item H $h$ είναι αύξουσα, 1-1 και
+\begin{itemize}
+    \item {\it ισχυρή} αν $h(a)<a$,\ \ {\it ασθενής} αν $h(a)>a$
+\end{itemize}
+\item Παραδείγματα: {\it πολύ}: $h(a)=a^2$, {\it σχετικά}: $h(a)=\sqrt{a}$.
+\item Συνήθης οικογένεια τροποποιητών: $h_\alpha(a)=a^\alpha$
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφείς προτάσεις}
+\begin{itemize}
+\item {\it Ατομική πρόταση}\vspace{-4pt}
+\[\mbox{$p:$ η $\mathcal{V}$ είναι $Α$}\]
+όπου $\mathcal{V}$ μια λεκτική μεταβλητή και $Α$ μια λεκτική τιμή της $\mathcal{V}$ (ή κάποια λεκτική τροποποίησή της).
+    \[ T(p)=Α(v)\]
+όπου $T(p)$ η τιμή αληθείας της πρότασης $p$ για $\mathcal{V}=v$.
+\item $p:$ η {\it Θερμοκρασία} είναι {\it Υψηλή}
+\begin{center}
+\includegraphics[width=10cm]{fuzzy-proposition.png}
+\end{center}
+\item Αν $v=85$, τότε $F(85)=0.75$ και $T(p)=0.75$.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+
+\begin{slide}
+\begin{small}
+{\large Σύνθετες προτάσεις}
+\begin{itemize}
+\item Μπορούμε να συνθέσουμε ατομικές προτάσεις χρησιμοποιώντας τους διάφορους τελεστές
+%\item {\it Σύνθετες προτάσεις}
+\begin{align*}
+&\mbox{$p_1:$ η $\mathcal{X}$ είναι {\bf όχι} $A$}\\
+&\mbox{$p_2:$ η $\mathcal{X}$ είναι $A$ {\bf και} η $\mathcal{Y}$ είναι $B$}\\
+&\mbox{$p_3:$ η $\mathcal{X}$ είναι $A$ {\bf ή}\hskip22pt η $\mathcal{Y}$ είναι $B$}
+\end{align*}
+\item Οι σύνθετες προτάσεις με $>1$ όρους ισοδυναμούν με ασαφείς σχέσεις:
+\begin{align*}
+&\mbox{$p_1:$ η $\mathcal{X}$ είναι $A'$}, &A'(x)=c(A(x))\\
+&\mbox{$p_2:$ η $\langle\mathcal{X},\mathcal{Y}\rangle$ είναι $R$}, & R(x,y)=i(A(x),B(y))\\
+&\mbox{$p_3:$ η $\langle\mathcal{X},\mathcal{Y}\rangle$ είναι $R$}, & R(x,y)=u(A(x),B(y))
+\end{align*}
+\item Παράδειγμα: \mbox{(η $\mathcal{X}$ είναι $S$ {\bf και} η $\mathcal{X}$ είναι {\bf όχι} $F$) {\bf ή} η $\mathcal{X}$ είναι {\bf πολύ} $M$}
+\[R(x_1,x_2,x_3)=i(u(S(x_1),c(F(x_2))),h(M(x_3)))\]
+όπου $x_1,x_2,x_3\in X$.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφείς προτάσεις}
+\begin{itemize}
+\item {\it Ασαφής κανόνας}
+\[\mbox{$p:$ αν η $\mathcal{X}$ είναι $A$, τότε η $\mathcal{Y}$ είναι $B$}\]
+όπου $\mathcal{X},\mathcal{Y}$ λεκτικές μεταβλητές και $Α,Β$ λεκτικές τιμές των $\mathcal{X},\mathcal{Y}$.
+\item Η πρόταση είναι ισοδύναμη με την
+\[\mbox{το $\langle\mathcal{X},\mathcal{Y}\rangle$ είναι $R$, όπου $R(x,y)= \mathcal{J}(A(x),B(y))$}\]
+όπου $\mathcal{J}$ είναι ένας τελεστής {\it ασαφούς συνεπαγωγής}.
+\item Αντί για τις ατομικές προτάσεις «η $\mathcal{X}$ είναι $A$» και «η $\mathcal{Y}$ είναι $B$» μπορούμε να έχουμε σύνθετες προτάσεις.
+%    \[ T(p)=\mathcal{J}[A(x),B(y)]_{x=x_1,y=y_1}\]
+%όπου $T(p)$ η τιμή αληθείας της πρότασης $p$ για $\mathcal{X}=x_1$, $\mathcal{Y}=y_1$ και
+%\item Ο $\mathcal{J}$ είναι μια {\it ασαφής σχέση} που ορίζεται επί του $X\times Y$.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Ασαφείς συνεπαγωγές}
+\begin{itemize}
+\item Στην κλασική λογική
+\begin{align*}
+p\rightarrow q\quad &\Leftrightarrow\quad \neg p \vee q\\
+&\Leftrightarrow\quad \neg p \vee (p \wedge q)\\
+&\Leftrightarrow\quad (\neg p \wedge \neg q) \vee q\\
+&\Leftrightarrow\quad \max\{x\in\{0,1\}\mid p\wedge x\leq q\}
+\end{align*}
+\item Ασαφείς γενικεύσεις:
+\begin{align*}
+&\mathcal{J}(a,b)= u(c(a),b)\\
+&\mathcal{J}(a,b)=u(c(a),i(a,b))\\
+&\mathcal{J}(a,b)=u(i(c(a),c(b)),b)\\
+&\mathcal{J}(a,b)=\max\{x\in[0,1]\mid i(a,x)\leq b\}
+\end{align*}
+\item Καθεμία από τις παραπάνω εξισώσεις ορίζει μια κλάση τελεστών ασαφούς συνεπαγωγής.
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφείς συνεπαγωγές}
+\begin{itemize}
+\item $S$-συνεπαγωγές\hfill\textcolor{red}{$\mathcal{J}(a,b)= u(c(a),b)$}
+\begin{itemize}
+\item Συνεπαγωγή \textlatin{Dienes-Rescher}: $\mathcal{J}_b(a,b)=\max\{1-a,b\}$.\quad ($u$=συνήθης ένωση)
+\item Συνεπαγωγή \textlatin{Reichenbach}: $\mathcal{J}_r(a,b)=1-a+ab$.\quad ($u$=αλγεβρικό άθροισμα)
+\item Συνεπαγωγή \textlatin{Lukasiewicz}: $\mathcal{J}_a(a,b)=\min\{1,1-a+b\}$.\quad ($u$=φραγμένο άθροισμα)
+\item Μέγιστη $S$-συνεπαγωγή: $\mathcal{J}_{LS}(a,b)=\left\{\begin{array}{ll}b&\mbox{αν $a=1$}\\1-a&\mbox{αν $b=0$}\\1&\mbox{διαφορετικά}\end{array}\right.$.\quad ($u$=δραστική ένωση)
+%\item Συνεπαγωγή \textlatin{Mamdani}: $\mathcal{J}(a,b)=\min\{a,b\}$.
+\vspace{18pt}
+\[\mathcal{J}_b\leq \mathcal{J}_r\leq  \mathcal{J}_a\leq \mathcal{J}_{LS}\]
+\end{itemize}
+
+\item $QL$-συνεπαγωγές\hfill\textcolor{red}{$\mathcal{J}(a,b)=u(c(a),i(a,b))$}
+\begin{itemize}
+\item Συνεπαγωγή \textlatin{Zadeh}: $\mathcal{J}_a(a,b)=\max\{1-a,\min\{a,b\}\}$.\quad (συνήθεις τελεστές)
+\end{itemize}
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφείς συνεπαγωγές}
+\begin{itemize}
+\item $R$-συνεπαγωγές\hfill \textcolor{red}{$\mathcal{J}(a,b)= \max\{x\in[0,1]\mid i(a,x)\leq b\}$}
+\begin{itemize}
+\item Συνεπαγωγή \textlatin{G\"{o}del}: $\mathcal{J}_g(a,b)=\left\{\begin{array}{ll}1&\mbox{αν $a\leq b$}\\b&\mbox{αν $a>b$}\end{array}\right.$.\quad ($i$=συνήθης τομή)
+\item Συνεπαγωγή \textlatin{Goguen}: $\mathcal{J}_\Delta(a,b)=\left\{\begin{array}{ll}1&\mbox{αν $a\leq b$}\\b/a&\mbox{αν $a>b$}\end{array}\right.$.\quad ($i$=αλγεβρικό γινόμενο)
+\item Συνεπαγωγή \textlatin{Lukasiewicz}: $\mathcal{J}_a(a,b)=\min\{1,1-a+b\}$.\quad ($i$=φραγμένη διαφορά)
+\item Μέγιστη $R$-συνεπαγωγή: $\mathcal{J}_{LR}(a,b)=\left\{\begin{array}{ll}b&\mbox{αν $a=1$}\\1&\mbox{διαφορετικά}\end{array}\right.$\quad (τυπικά δεν είναι $R$-συνεπαγωγή).
+\vspace{18pt}
+\[\mathcal{J}_g\leq \mathcal{J}_\Delta\leq  \mathcal{J}_a\leq \mathcal{J}_{LR}\]
+\end{itemize}
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφείς συνεπαγωγές}
+\begin{itemize}
+
+\item Αξιωματικός ορισμός ασαφούς συνεπαγωγής βάση επιθυμητών ιδιοτήτων.
+\item Μια συνάρτηση $\mathcal{J}:[0,1]\times[0,1]\rightarrow [0,1]$ που ικανοποιεί κάποιες από τις
+\begin{enumerate}
+\item αν $a\leq b$ τότε $\mathcal{J}(a,x)\geq \mathcal{J}(b,x)$
+\item αν $a\leq b$ τότε $\mathcal{J}(x,a)\leq \mathcal{J}(x,b)$
+\item $\mathcal{J}(0,a)=1$ (κυριαρχία του ψευδούς)
+\item $\mathcal{J}(1,b)=b$ (ουδετερότητα του αληθούς)
+\item $\mathcal{J}(a,a)=1$ (ταυτότητα)
+\item $\mathcal{J}(a,\mathcal{J}(b,c))=\mathcal{J}(b,\mathcal{J}(a,c))$ (ιδιότητα της ανταλλαγής)
+\item $\mathcal{J}(a,b)=1$ αν και μόνο αν $a\leq b$
+\item $\mathcal{J}(a,b)=\mathcal{J}(c(b),c(a))$ (αντίθεση)
+\item $\mathcal{J}$ συνεχής συνάρτηση (συνέχεια)
+\end{enumerate}
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφείς συνεπαγωγές}
+\begin{itemize}
+
+\item Η συνεπαγωγή \textlatin{Lukasiewicz} ικανοποιεί τις ιδιότητες 1, 2, 3, 4, 5, 6, 7, 8, 9.
+
+\item Στα ασαφή συστήματα χρησιμοποιούνται συνήθως οι εξής τελεστές
+\begin{itemize}
+\item Συνεπαγωγή \textlatin{Mamdani}: $\mathcal{J}_{\min}(a,b)=\min\{a,b\}$.
+\item Συνεπαγωγή \textlatin{Larsen}: $\mathcal{J}_{\mathrm{prod}}(a,b)=ab$ (σπανιότερα).
+\end{itemize}
+
+\item Ικανοποιούν τις ιδιότητες 2, 4, 6, 9.
+\begin{itemize}
+\item $\mathcal{J}_{\min}(0,0)=0$ ενώ, με βάση το αξίωμα 3, $\mathcal{J}(0,a)=1$
+\end{itemize}
+
+\end{itemize}
+
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Παράδειγμα}
+\begin{itemize}
+\item Ασαφής κανόνας
+\[\mbox{$p:$ αν η $\mathcal{X}$ είναι $A$, τότε η $\mathcal{Y}$ είναι $B$}\]
+\item Υπολογισμοί\\[8pt]
+     $A=0.1/x_1+0.8/x_2+1/x_3$\\[4pt] $B=0.5/y_1+1/y_2$\\[10pt]
+     $\mathcal{J}=\min\{1,1-a+b\}$\\[20pt]
+$\mathcal{J}(A,B)=1/x_1,y_1 + 1/x_1,y_2 +0.7/x_2,y_1 + 1/x_2,y_2 + 0.5/x_3,y_1 + 1/x_3,y_2$\\[20pt]
+Αν $\mathcal{X}=x_1$ και $\mathcal{Y}=y_1$ τότε $T(p)=1$\\[4pt]
+Αν $\mathcal{X}=x_2$ και $\mathcal{Y}=y_1$ τότε $T(p)=0.7$.
+
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Προσεγγιστικός συμπερασμός}
+\begin{itemize}
+\item \textlatin{Modus ponens}: αν $p$ και $p \rightarrow q$ τότε $q$.\vspace{-12pt}
+\begin{center}
+\includegraphics[width=22cm]{fuzzy-cinference.png}
+\end{center}
+\item Συνάρτηση: $B=\{y\in Y\mid \mbox{υπάρχει $x\in A$ και $y=f(x)$}\}$
+\item Σχέση: $B=\{y\in Y\mid \mbox{υπάρχει $x\in A$ και $\langle x,y\rangle\in R$}\}$\\[4pt]
+\phantom{Σχέση: }$B=\{y\in Y\mid  \mbox{υπάρχει $x$: $\min\left(
+\left\{\begin{array}{ll}1&\mbox{αν $x\in A$}\\0&\mbox{διαφορετικά}\end{array}\right.,
+\left\{\begin{array}{ll}1&\mbox{αν $\langle x,y\rangle\in R$}\\0&\mbox{διαφορετικά}\end{array}\right.\right)=1$}\}$\\[4pt]
+\phantom{Σχέση: }$B=\{y\in Y\mid  \mbox{υπάρχει $x$: $\min\{A(x),R(x,y)\}=1$}\}$
+\\[14pt]
+\phantom{Σχέση: }$B=\sup_{x\in X}\min\{A(x),R(x,y)\}$\\[6pt]
+\phantom{Σχέση: }$B=A\circ R$\hfill {\it συνθετικός κανόνας συμπερασμού}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Συνθετικός κανόνας συμπερασμού}
+\begin{center}
+\includegraphics[width=11cm]{fuzzy-inference.png}
+\end{center}
+\[B'(y)=\sup_{x\in X}\min\{A'(x),R(x,y)\}\]
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Γενικευμένος \textlatin{modus ponens}}
+\begin{itemize}
+\item Συλλογιστική διαδικασία:\\[25pt]
+\begin{tabular}{ll}
+Υπόθεση 1: & \mbox{αν η $\mathcal{X}$ είναι $A$, τότε η $\mathcal{Y}$ είναι $B$}\\
+Υπόθεση 2: & \mbox{η $\mathcal{X}$ είναι $A'$}\\[5pt]
+\hline\\[-10pt]
+Συμπέρασμα: & \mbox{η $\mathcal{Y}$ είναι $B'$}
+\end{tabular}\qquad\qquad\qquad$\left(\begin{tabular}{l}
+$p\rightarrow q$\\
+$p$\\[5pt]
+\hline\\[-10pt]
+$q$
+\end{tabular}\right)$\vskip25pt
+
+\vskip15pt
+όπου
+\[B'(y)=\sup_{x\in X}\min\{A'(x),R(x,y)\}\qquad \]
+και \[R(x,y)=\mathcal{J}(A(x),B(y))\]
+
+\item Όσο πλησιέστερα είναι το $A'$ στο $A$, τότε πλησιέστερα είναι το $B'$ στο $Β$.
+\end{itemize}
+
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Παράδειγμα}
+\begin{itemize}
+\item $X=\{x_1,x_2,x_3\}$, $Y=\{y_1,y_2\}$
+\item Δίνεται ότι «\mbox{αν η $\mathcal{X}$ είναι $A$, τότε η $\mathcal{Y}$ είναι $B$}» όπου\\[4pt]
+$A=0.5/x_1+1/x_2+0.6/x_3$ και $B=1/y_1+0.4/y_2$
+
+\item Δίνεται ότι «\mbox{η $\mathcal{X}$ είναι $A'$}» όπου $A'=0.6/x_1+0.9/x_2+0.7/x_3$
+
+\item Από συνεπαγωγή \textlatin{Lukasiewicz} έχουμε
+\[R=1/x_1,y_1+0.9/x_1,y_2+1/x_2,y_1+0.4/x_2,y_2+1/x_3,y_1+0.8/x_3,y_2\]
+
+\item Από συνθετικό κανόνα συμπερασμού έχουμε
+\begin{align*}
+B'(y_1)&=\sup_{x\in X}\min\{A'(x),R(x,y_1)\}=\max\{\min\{0.6,1\},\min\{0.9,1\},\min\{0.7,1\}\}=0.9\\
+B'(y_2)&=\sup_{x\in X}\min\{A'(x),R(x,y_2)\}=\max\{\min\{0.6,0.9\},\min\{0.9,0.4\},\min\{0.7,0.8\}\}=0.7
+\end{align*}
+\item $B'=0.9/y_1 + 0.7/y_2$
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Γενικευμένος \textlatin{modus tollens}}
+\begin{itemize}
+\item Συλλογιστική διαδικασία:\\[25pt]
+\begin{tabular}{ll}
+Υπόθεση 1: & \mbox{αν η $\mathcal{X}$ είναι $A$, τότε η $\mathcal{Y}$ είναι $B$}\\
+Υπόθεση 2: & \mbox{η $\mathcal{Y}$ είναι $B'$}\\[5pt]
+\hline\\[-10pt]
+Συμπέρασμα: & \mbox{η $\mathcal{X}$ είναι $A'$}
+\end{tabular}\qquad\qquad\qquad$\left(\begin{tabular}{l}
+$p\rightarrow q$\\
+$\neg q$\\[5pt]
+\hline\\[-10pt]
+$\neg p$
+\end{tabular}\right)$\vskip25pt
+
+\vskip15pt
+όπου
+\[A'(y)=\sup_{y\in Y}\min\{B'(x),R(x,y)\}\qquad \]
+και \[R(x,y)=\mathcal{J}(A(x),B(y))\]
+\item Όσο περισσότερο διαφέρει το $A'$ από το $A$, τότε περισσότερο διαφέρει το $B'$ από το $Β$.
+\end{itemize}
+
+
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Γενικευμένος υποθετικός συλλογισμός}
+\begin{itemize}
+\item Συλλογιστική διαδικασία:\\[25pt]
+\begin{tabular}{ll}
+Υπόθεση 1: & \mbox{αν η $\mathcal{X}$ είναι $A$, τότε η $\mathcal{Y}$ είναι $B$}\\
+Υπόθεση 2: & \mbox{αν η $\mathcal{Y}$ είναι $B'$, τότε η $\mathcal{Z}$ είναι $C$}\\
+\hline\\[-10pt]
+Συμπέρασμα: & \mbox{αν η $\mathcal{Y}$ είναι $A$, τότε η $\mathcal{Z}$ είναι $C'$}\\
+\end{tabular}\qquad\qquad\qquad$\left(\begin{tabular}{l}
+$p\rightarrow q$\\
+$q\rightarrow r$\\[5pt]
+\hline\\[-10pt]
+$p\rightarrow r$
+\end{tabular}\right)$\vskip25pt
+
+\vskip15pt
+όπου
+\[R(x,z)=\sup_{y\in Y}\min\{R_1(x,y),R_2(y,z)\}\qquad \]
+και \[R_1(x,y)=\mathcal{J}(A(x),B(y))\]
+\[R_2(x,y)=\mathcal{J}(B'(x),C(y))\]
+\item Όσο πλησιέστερα είναι το $B$ στο $Β'$, τότε πλησιέστερα είναι το $C'$ στο $C$.
+\end{itemize}
+
+
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Ασαφή συστήματα}
+\begin{itemize}
+\item {\it Ασαφές σύστημα}: Ένα σύνολο ασαφών κανόνων της μορφής
+\[\begin{array}{ll}
+L^1: &\mbox{{\bf αν} η $\mathcal{X}_1$ είναι $Α^1_1$ {\bf και} η $\mathcal{X}_2$ είναι $\mathcal{Α}^1_2$ {\bf και} $...$ η $\mathcal{X}_{n}$ είναι $Α^1_n$ {\bf τότε} η $\mathcal{Y}$ είναι $Β^1$.}\\
+L^2: &\mbox{{\bf αν} η $\mathcal{X}_1$ είναι $Α^2_1$ {\bf και} η $\mathcal{X}_2$ είναι $Α^2_2$ {\bf και} $...$ η $\mathcal{X}_{n}$ είναι $Α^2_n$ {\bf τότε} η $\mathcal{Y}$ είναι $Β^2$.}\\
+&$\ldots$\\
+L^k: &\mbox{{\bf αν} η $\mathcal{X}_1$ είναι $Α^k_1$ {\bf και} η $\mathcal{X}_2$ είναι $Α^k_2$ {\bf και} $...$ η $\mathcal{X}_{n}$ είναι $Α^k_n$ {\bf τότε} η $\mathcal{Y}$ είναι $Β^k$.}\\
+
+\end{array}\]
+\item Ζητούμενο είναι η πραγματοποίηση συμπερασμού:
+\begin{itemize}
+\item Δεδομένων των ατομικών προτάσεων «$\mbox{η $\mathcal{X}_i$ είναι $A'_i$}$»,
+\item Να υπολογιστεί το $Β'$ για την πρόταση «$\mbox{η $\mathcal{Y}$ είναι $Β'$}$».
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Ασαφή συστήματα}
+\begin{itemize}
+\item Ειδικές περιπτώσεις
+\begin{itemize}
+\item Μερικοί κανόνες
+\[\mbox{{\bf αν} η $\mathcal{X}_1$ είναι $Α_1$ {\bf και} $...$ η $\mathcal{X}_{m}$ είναι $Α_m$ {\bf τότε} η $\mathcal{Y}$ είναι $Β$,\quad $m<n$}\quad\Rightarrow\]
+\[\mbox{{\bf αν} η $\mathcal{X}_1$ είναι $Α_1$ {\bf και} $...$ η $\mathcal{X}_{m}$ είναι $Α_m$ {\bf και} $...$ η $\mathcal{X}_{m+1}$ είναι $I$ {\bf και} $...$ {\bf τότε} η $\mathcal{Y}$ είναι $Β^1$}\]
+\item Διαζευκτικοί κανόνες
+\[\mbox{{\bf αν} η $\mathcal{X}_1$ είναι $Α_1$ {\bf ή} η $\mathcal{X}_{2}$ είναι $Α_2$ {\bf τότε} η $\mathcal{Y}$ είναι $Β$}\quad\Rightarrow\]
+\[\mbox{{\bf αν} η $\mathcal{X}_1$ είναι $Α_1$ {\bf τότε} η $\mathcal{Y}$ είναι $Β$}\]
+\[\mbox{{\bf αν} η $\mathcal{X}_{2}$ είναι $Α_2$ {\bf τότε} η $\mathcal{Y}$ είναι $Β$}\]
+\item Προτάσεις
+\[\mbox{η $\mathcal{Y}$ είναι $Β$}\quad\Rightarrow\]
+\[\mbox{{\bf αν} η $\mathcal{X}_1$ είναι $I$ {\bf και} $...$ η $\mathcal{X}_{n}$ είναι $I$ {\bf τότε} η $\mathcal{Y}$ είναι $Β$}\]
+
+
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Συμπερασμός σε ασαφές σύστημα}
+\begin{enumerate}
+\item {\bf Αποτίμηση υπόθεσης} για κάθε κανόνα $L^l$.
+\begin{itemize}
+\item Υπολογισμός της σχέσης $S^l(X_1,X_2,\ldots, X_n)$ που αντιπροσωπεύει το σώμα του $L^l$.
+\[S^l(x_1,x_2,\ldots,x_n)=i(A^l_1(x_1),A^l_2(x_2),\ldots,A^l_n(x_n))\]
+όπου $i$ μια $t$-νόρμα.
+\end{itemize}
+
+\item {\bf Αποτίμηση κανόνα} για κάθε κανόνα $L^l$.
+\begin{itemize}
+\item Υπολογισμός της σχέσης $R^l(X_1,X_2,\ldots, X_n,Y)$ που αντιπροσωπεύει ο $L^l$.
+\[R^l(x_1,x_2,\ldots,x_n,y)=\mathcal{J}(S^l(x_1,x_2,\ldots,x_n), B^l(y))\]
+όπου $\mathcal{J}$ είναι ένας τελεστής ασαφούς συνεπαγωγής.
+\end{itemize}
+\end{enumerate}
+\begin{itemize}
+\item Στη συνέχεια οι κανόνες μπορούν να συνδυαστούν είτε πριν είτε μετά την πραγματοποίηση του συμπερασμού
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Συμπερασμός σε ασαφές σύστημα (ανά κανόνα)}
+
+\begin{enumerate}
+\setcounter{enumi}{2}
+\item {\bf Πραγματοποίηση συμπερασμού} για  κάθε κανόνα $L^i$.
+\begin{itemize}
+\item Εφαρμογή του συνθετικού κανόνα συμπερασμού:
+\[B_l'(y)=\sup_{\langle x_1,\ldots,x_n\rangle\in X_1\times\ldots X_n} i(A'(x_1,\ldots,x_n),R^l(x_1,x_2,\ldots, x_n,y))\]
+
+\end{itemize}
+\item {\bf Συνάθροιση κανόνων}.
+\begin{itemize}
+\item Συνδυασμός των αποτελεσμάτων των διαφόρων κανόνων.
+\[B'(y)=u(B_1'(y),\ldots, B_k'(y))\]
+όπου $u$ μια $s$-νόρμα, ή
+\[B'(y)=i(B_1'(y),\ldots, B_k'(y))\]
+όπου $i$ μια $t$-νόρμα.
+\end{itemize}
+\end{enumerate}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Συμπερασμός σε ασαφές σύστημα (συνθετικά)}
+
+\begin{enumerate}
+\setcounter{enumi}{2}
+\item {\bf Συνάθροιση κανόνων}.
+\begin{itemize}
+\item Συνδυασμός των σχέσεων που εκφράζουν οι διάφοροι κανόνες.
+\[R(x_1,x_2,\ldots,x_n,y)=u(R^1(x_1,x_2,\ldots,x_n,y),\ldots, R^k(x_1,x_2,\ldots,x_n,y))\]
+όπου $u$ μια $s$-νόρμα, ή
+\[R(x_1,x_2,\ldots,x_n,y)=i(R^1(x_1,x_2,\ldots,x_n,y),\ldots, R^k(x_1,x_2,\ldots,x_n,y))\]
+όπου $i$ μια $t$-νόρμα.
+\end{itemize}
+\item {\bf Πραγματοποίηση συμπερασμού} για  κάθε κανόνα $L^i$.
+\begin{itemize}
+\item Εφαρμογή του συνθετικού κανόνα συμπερασμού:
+\[B'(y)=\sup_{\langle x_1,\ldots,x_n\rangle\in X_1\times\ldots X_n} i(A'(x_1,\ldots,x_n),R(x_1,x_2,\ldots, x_n,y))\]
+\end{itemize}
+\end{enumerate}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφή συστήματα: Παραδείγματα}
+
+\begin{itemize}
+\item {\bf Μηχανή συμπερασμού γινομένου}.
+\begin{itemize}
+\item Συλλογιστική ανά κανόνα με ένωση κανόνων, συνεπαγωγή \textlatin{Mamdani}, τομή αλγεβρικού γινομένου:
+\[B'(y)=\max_{i=1\ldots k}\{
+         \sup_{x_1,x_2,\ldots,x_n\in X_1\times X_2\times\ldots\times X_n}\{
+           A'(x_1,\ldots,x_n)\prod_{i=1}^n A^l_i(x_i) B^l(y)\}\}\]
+
+\item {\bf Μηχανή συμπερασμού ελαχίστου}.
+\end{itemize}
+\begin{itemize}
+\item Συλλογιστική ανά κανόνα με ένωση κανόνων, συνεπαγωγή \textlatin{Mamdani}, τομή $\min$:
+\[B'(y)=\max_{i=1\ldots k}\{
+         \sup_{x_1,x_2,\ldots,x_n\in X_1\times X_2\times\ldots\times X_n}
+           \min\{A'(x_1,\ldots,x_n),A^l_1(x_i),\ldots,A^l_n(x_n), B^l(y)\}\}\]
+
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\begin{slide}
+\begin{small}
+{\large Ασαφή συστήματα: Παραδείγματα}
+
+\begin{itemize}
+\item {\bf Μηχανή συμπερασμού \textlatin{Lukasiewicz}}.
+\begin{itemize}
+\item Συλλογιστική ανά κανόνα με τομή κανόνων, συνεπαγωγή \textlatin{Lukasiewicz}, τομή $\min$:
+\[B'(y)=\min_{i=1\ldots k}\{
+         \sup_{x_1,x_2,\ldots,x_n\in X_1\times X_2\times\ldots\times X_n}
+           \min\{ A'(x_1,\ldots,x_n),1-\min_{i=1}^n\{ A^l_i(x_i)\}+ B^l(y)\}\}\]
+\end{itemize}
+\item {\bf Μηχανή συμπερασμού \textlatin{Dienes-Rescher}}.
+\begin{itemize}
+\item Συλλογιστική ανά κανόνα με τομή κανόνων, συνεπαγωγή \textlatin{Dienes-Rescher}, τομή $\min$:
+\[B'(y)=\min_{i=1\ldots k}\{
+         \sup_{x_1,x_2,\ldots,x_n\in X_1\times X_2\times\ldots\times X_n}
+           \min\{ A'(x_1,\ldots,x_n),\max\{1-\min_{i=1}^n\{ A^l_i(x_i)\}\}, B^l(y)\}\}\]
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφοποίηση}
+\begin{itemize}
+\item Συνήθως οι είσοδοι ενός ασαφούς συστήματος είναι (μη ασαφείς) αριθμητικές τιμές.
+\item Πριν από το πρώτο βήμα εκτελείται {\bf ασαφοποίηση εισόδων}: Μετατροπή της τιμής εισόδου $\hat{x}$ για τη μεταβλητή $\mathcal{X}_i$ σε ένα ασαφές σύνολο $A'$.
+\begin{itemize}
+\item {\it Σημειακή ασαφοποίηση}
+\[A'_i(x)=\left\{\begin{array}{ll}1&\mbox{αν $x=\hat{x}$}\\0&\mbox{διαφορετικά}\end{array}\right.\]
+\item {\it Γκαουσιανή ασαφοποίηση}
+\[A'_i(x)=e^{-(\frac{x-\hat{x}}{a})},\quad a>0\]
+\item {\it Τριγωνική ασαφοποίηση}
+\[A'_i(x)=\left\{\begin{array}{ll}1-\frac{|x-\hat{x}|}{b}&\mbox{αν $|x-x_i|\leq b$}\\0&\mbox{διαφορετικά}\end{array}\right.,\quad  b>0\]
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Αποασαφοποίηση}
+\begin{itemize}
+\item Η έξοδος ενός ασαφούς συστήματος είναι ένα ασαφές σύνολο.
+\item Μετά το τελευταίο βήμα εκτελείται {\bf αποασαφοποίηση εισόδων}: Μετατροπή του ασαφούς συνόλου εξόδου $B'$ σε μια κλασική τιμή $\hat{y}$.
+\begin{itemize}
+\item {\bf Aποασαφοποίηση κέντρου μάζας}:\vspace{-6pt}
+\[\hat{y}=\frac{\int_Y B'(y)y\,dy}{\int_Y B'(y)\,dy}\]
+%\item {\bf Aποασαφοποίηση κέντρου μέσων}: (για $M$
+\item {\bf Aποασαφοποίηση μέσου μεγίστων}:
+\[\hat{y}=\frac{\int_{Y'}y\,dy}{\int_{Y'}\,dy},\quad Y'=\{y\mid B'(y)=\hat{\mu}\}, \hat{\mu}=\sup B'(y)\].
+\end{itemize}
+\begin{center}
+\includegraphics[width=13cm]{fuzzy-defuzz.png}
+\end{center}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+
+\begin{slide}
+\begin{small}
+{\large Ασαφές σύστημα: Παράδειγμα}
+\begin{itemize}
+\item Υπολογισμός φιλοδωρήματος.
+\item Ασαφείς μεταβλητές:
+\begin{itemize}
+    \item $S$ (εξυπηρέτηση): Κακή, Καλή, Άριστη \hskip4cm $[0 - 10]$
+    \item $F$ (φαγητό): Άνοστο, Υπέροχο \hskip5.85cm $[0 - 10]$
+    \item $Τ$ (φιλοδώρημα): Χαμηλό, Κανονικό, Γενναιόδωρο. \hskip0.7cm $[0\% - 25\%]$
+\end{itemize}
+\item Κανόνες ασαφούς συστήματος:
+\begin{itemize}
+\item $p_1$: {\bf αν} η $S$ είναι Κακή {\bf ή} το $F$ είναι Άνοστο {\bf τότε} το $T$ είναι Χαμηλό.
+\item $p_2$: {\bf αν} η $S$ είναι Καλή {\bf τότε} το $T$ είναι Κανονικό.
+\item $p_3$: {\bf αν} η $S$ είναι Άριστη {\bf ή} το $F$ είναι Υπέροχο {\bf τότε} το $T$ είναι Γενναιόδωρο.
+\end{itemize}
+\item Είσοδοι:
+\begin{itemize}
+\item Εξυπηρέτηση: 3/10, Φαγητό: 8/10.
+\end{itemize}
+\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφές σύστημα: Παράδειγμα}
+\begin{itemize}
+
+\item Συλλογιστική ανά κανόνα με ένωση κανόνων, συνεπαγωγή \textlatin{Mamdani}, τομή $\min$, ένωση $\max$:
+\begin{align*}
+B'(y)&=\max_{i=1\ldots 3}\{
+         \sup_{x_1,x_2\in X_1\times X_2}
+           \min\{A'(x_1,x_2),R^l(x_1,x_2,y)\}\}\\
+&=\max_{i=1\ldots 3}\{
+         \sup_{x_1,x_2\in X_1\times X_2}
+           \min\{A'(x_1,x_2),\min\{S^l(x_1,x_2),B^l(y)\}\}\}\\
+&=\max_{i=1\ldots 3}\{
+         \sup_{x_1,x_2\in X_1\times X_2}
+           \min\{A'(x_1,x_2),\min\{\max\{A^l(x_1),A^l(x_2)\},B^l(y)\}\}\}\\
+&=\max_{i=1\ldots 3}\{
+         \sup_{x_1,x_2\in X_1\times X_2}
+           \min\{A'(x_1,x_2),\max\{A^l(x_1),A^l(x_2)\},B^l(y)\}\}
+\end{align*}
+
+\item Ασαφοποίηση εισόδων: $A'=1/\langle3,8\rangle$
+
+
+%
+%\item {\bf Αποτίμηση υποθέσεων και εφαρμογή κανόνων}:\\
+%Πραγματοποίηση συμπερασμού για κάθε κανόνα «{\bf αν} η $\mathcal{X}$ είναι $A$ {\bf τότε} η $\mathcal{Y}$ είναι $Β$»: \[Β'(y)=\min\{h(A'\cap A),Β(y)\}\] όπου $A'$ η ασαφοποιημένη είσοδος. Ειδική περίπτωση του συνθετικού κανόνα συμπερασμού με τελεστή συνεπαγωγής το $\min$ (συνεπαγωγή \textlatin{Mamdani}): \[Β'(y)=\sup_{x\in X}\min\{A'(x),\min\{A(x),B(y)\}\}\]
+% \begin{itemize}
+% \item  $p_1$: $Β'_1(x)=\min\{0.1,\text{Χαμηλό}(x)\}$.
+% \item  $p_2$: $Β'_2(x)=\min\{0.6,\text{Κανονικό}(x)\}$.
+% \item  $p_3$: $Β'_3(x)=\min\{0.7,\text{Γενναιόδωρο}(x)\}$.
+%    \end{itemize}
+    \end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+%\begin{slide}
+%\begin{small}
+%{\large Αποτίμηση ασαφούς συστήματος}
+%\begin{itemize}
+%\item {\bf Συνάθροιση κανόνων}:
+%    \begin{itemize}
+%    \item $B'(x)=\max\{B'_1(x),B'_2(x),B'_3(x)\}$
+%    \end{itemize}
+%\item {\bf Αποασαφοποίηση εξόδου}:\\
+%   \begin{itemize}
+%        \item Κέντρο μάζας: $\frac{\int_Z B'(z)z\,dz}{\int_Z B'(z)\,dz}=15.8$.
+%    \end{itemize}
+%\item Ασαφές σύστημα {\color{red}\it\eng{Mamdani}}.
+%\end{itemize}
+%
+%\end{small}
+%\vfill
+%\end{slide}
+
+\begin{slide}
+\begin{small}
+{\large Ασαφές σύστημα: Παράδειγμα}
+%\begin{itemize}
+%\item Σχηματικά
+\begin{center}
+\includegraphics[width=15cm]{fuzzy.eps}
+\end{center}
+%\end{itemize}
+\end{small}
+\vfill
+\end{slide}
+
+
+\end{document}

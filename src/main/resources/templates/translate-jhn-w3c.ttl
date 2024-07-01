@@ -1,0 +1,296 @@
+@prefix rr:    <http://www.w3.org/ns/r2rml#> .
+@prefix xsd:   <http://www.w3.org/2001/XMLSchema#> .
+@prefix rdf:   <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix http: 	<http://www.w3.org/2011/http#> .
+@prefix time: <http://www.w3.org/2006/time#> .
+@prefix oa: <http://www.w3.org/ns/oa#> .
+@prefix as: <https://www.w3.org/ns/activitystreams#> .
+@prefix dcterms: <http://purl.org/dc/terms/> .
+@prefix rdfs:  <http://www.w3.org/2000/01/rdf-schema#> .
+
+@prefix dr:   <http://islab.ntua.gr/ns/d2rml#> .
+@prefix op:  <http://islab.ntua.gr/ns/d2rml-op#> .
+@prefix is:  <http://islab.ntua.gr/ns/d2rml-is#> .
+@prefix cnt: <http://www.w3.org/2011/content#> .
+
+@prefix collection: <{##ppRESOURCE_PREFIX##}>
+@prefix model: <http://sw.islab.ntua.gr/semaspace/model/>
+
+<#Order>
+	a dr:TriplesMapOrdering ;
+	dr:mapOrder (<#TokenMapping> <#TranslationMapping> ) .
+	
+<#SPARQLEndpoint>
+   a is:SPARQLService ;
+   is:uri "{@@iirdfsource@@}" .
+   
+<#TokenService>
+   a is:HTTPSource ;
+   is:request [ 
+      http:absoluteURI "https://data.jhn.ngo/translate/auth" ;
+      http:methodName "POST" ;
+      http:headers ( [ http:fieldName "Content-Type" ;
+                       http:fieldValue "application/json" ; ] ) ;
+      http:body [ a cnt:ContentAsText ; 
+                  cnt:chars "{\"user\" : \"{@@user@@}\", \"password\" : \"{@@password@@}\" }" ; ] ;
+   ] ;
+   is:parameters [ 
+      a is:DataVariable;
+      is:name "user" ;
+   ] ;
+   is:parameter [  
+      a is:DataVariable;
+      is:name "password" ;
+   ] .
+   
+<#TranslationService>
+   a is:HTTPSource ;
+   is:request [ 
+      http:absoluteURI "https://data.jhn.ngo/translate" ;
+      http:methodName "POST" ;
+      http:headers ( [ http:fieldName "Content-Type" ;
+                       http:fieldValue "application/json" ; ] 
+                     [ http:fieldName "authorization" ;
+                       http:fieldValue "Bearer {@@access-token@@}" ; ] ) ;
+      http:body [ a cnt:ContentAsText ; 
+                  cnt:chars "{\"text\" : [ \"{@@text@@}\" ], \"src\":\"{@@source-language@@}\", \"tgt\": \"en\"  }" ; ] ;
+   ] ;
+   is:parameter [ 
+      a is:DataVariable;
+      is:name "text" ;
+   ] ; 
+   is:parameter [ 
+      a is:DataVariable;
+      is:name "source-language" ;
+   ] ;
+   is:parameter [ 
+      a is:DataVariable;
+      is:name "access-token" ;
+   ] .   
+   
+<#TokenTransformation>
+   dr:logicalSource [ 
+      dr:source <#TokenService> ;
+      dr:iterator "$";
+	  dr:referenceFormulation is:JSONPath;
+   ] ;
+   dr:parameterBinding [ 
+      dr:parameter "user" ;
+      rr:constant "{@@user@@}" ;
+   ] ;
+   dr:parameterBinding [ 
+      dr:parameter "password" ;
+      rr:constant "{@@password@@}" ;
+   ].	
+   
+<#TokenModel>
+    a is:AuxiliaryModel .
+   
+<#TokenMapping>  
+   dr:target <#TokenModel> ;
+   rr:logicalTable [ 
+      a dr:TextTable ;
+      dr:source [ 
+         a is:FileSource ;
+         is:string "x" 
+      ];
+	  dr:delimiter "\t";
+	  dr:headerLine "false";
+   ] ;
+   dr:transformations ( <#TokenTransformation> ) ;
+   rr:subjectMap [ 
+      rr:constant  <http://www.ex.org/token> ;
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate rdfs:label ;
+      rr:objectMap [
+         rr:column "$.access_token" ; 
+         dr:transformationReference <#TokenTransformation> ;
+         rr:termType rr:Literal ;
+      ] ;
+   ] .   
+   
+<#TokenRetrieveTransformation>
+   rr:logicalTable [ 
+      dr:source <#TokenModel> ;
+      dr:sparqlQuery "SELECT ?token WHERE { <http://www.ex.org/token> <http://www.w3.org/2000/01/rdf-schema#label> ?token }  ";
+   ] .
+   
+<#TranslationTransformation>
+   dr:logicalSource [ 
+      dr:source <#TranslationService> ;
+      dr:iterator "$";
+	  dr:referenceFormulation is:JSONPath;
+   ] ;
+   dr:parameterBinding [ 
+      dr:parameter "text" ;
+      rr:column "lexicalValue" ;
+      dr:escapeType dr:EscapeJSON ;
+   ] ;
+   dr:parameterBinding [ 
+      dr:parameter "source-language" ;
+      dr:icases ( [
+         rr:constant "it" ;
+         dr:condition [
+            rr:column "language" ;
+	        op:matches "it|ita" ;
+	     ] ;
+	  ] [
+         rr:constant "de" ;
+         dr:condition [
+            rr:column "language" ;
+	        op:matches "de|deu|ger" ;
+	     ] ;
+	  ] [
+         rr:constant "cs" ;
+         dr:condition [
+            rr:column "language" ;
+	        op:matches "cs|cze|ces" ;
+	     ] ;
+	  ] [
+         rr:constant "gr" ;
+         dr:condition [
+            rr:column "language" ;
+	        op:matches "el|ell|gre" ;
+	     ] ;
+	  ] [
+         rr:constant "fr" ;
+         dr:condition [
+            rr:column "language" ;
+	        op:matches "fr|fre|fra" ;
+	     ] ;
+	  ] [
+         rr:constant "sv" ;
+         dr:condition [
+            rr:column "language" ;
+	        op:matches "sv|swe" ;
+	     ] ;
+	  ] [
+         rr:constant "ca" ;
+         dr:condition [
+            rr:column "language" ;
+	        op:matches "ca|cat" ;
+	     ] ;
+	  ] [
+         rr:constant "nl" ;
+         dr:condition [
+            rr:column "language" ;
+	        op:matches "nl|dut|nld" ;
+	     ] ;
+	  ] [
+         rr:constant "pl" ;
+         dr:condition [
+            rr:column "language" ;
+	        op:matches "pl|pol" ;
+	     ] ;
+	  ] [
+         rr:constant "es" ;
+         dr:condition [
+            rr:column "language" ;
+	        op:matches "es|spa" ;
+	     ] ;
+	  ] [
+         rr:constant "" ;
+  	  ] ) ;       
+   ] ;
+   dr:parameterBinding [ 
+      dr:parameter "access-token" ;
+      rr:column "token" ;
+      dr:transformationReference <#TokenRetrieveTransformation> ;
+   ] .
+
+   
+<#ExecuteSpecification>
+   a dr:D2RMLSpecification ;
+   dr:logicalDatasets ( <#TranslationMapping> ) .
+
+
+<#TranslationMapping>  
+   a  <http://islab.ntua.gr/ns/d2rml#PrimaryTriplesMap> ;
+   rr:logicalTable [ 
+      dr:source <#SPARQLEndpoint> ;
+      dr:sparqlQuery "SELECT DISTINCT ?id ?r0 ?lexicalValue_r0 ?language_r0 {@@iigraph@@} WHERE { ?id {@@iiproperty@@} ?r0 . FILTER (isLiteral(?r0)) . BIND(STR(?r0) AS ?lexicalValue_r0) . BIND(LANG(?r0) AS ?language_r0) }" ;            
+#      dr:maxItems 10;
+	  is:parameters ( [ 
+         a is:ExternalVariable;
+         is:name "iigraph" ;
+      ] [ 
+         a is:ExternalVariable;
+         is:name "iiproperty" ;
+      ] ) ;
+   ] ;
+   dr:transformations ( <#TokenRetrieveTransformation> <#TranslationTransformation> ) ;
+   {##ppPREPROCESS##}
+   rr:subjectMap [ 
+      dr:definedColumns ( [
+         dr:name "UUID" ;
+         dr:function op:uuid ; 
+      ] );
+      rr:template  "{@collection}{UUID}" ;
+      rr:class oa:Annotation ;
+      rr:class model:TranslationAnnotation ;
+      dr:condition [
+         rr:column "$";
+         dr:transformationReference <#TranslationTransformation> ;
+         op:matches "(?s).+" ; 
+      ] ;      
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate as:generator ;
+      rr:objectMap [
+         rr:constant "{@@iiannotator@@}" ; 
+         rr:termType rr:IRI ;
+      ] ;
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate dcterms:created ;
+      rr:objectMap [
+         dr:definedColumns ( [
+            dr:name "TIME" ;
+            dr:function op:currentTime; 
+         ] );          
+         rr:column "TIME";
+         rr:datatype xsd:dateTime ;
+         rr:termType rr:Literal ;
+      ]
+   ] ;      
+   rr:predicateObjectMap [ 
+      rr:predicate oa:hasTarget ;
+      rr:objectMap  [ 
+	     rr:parentTriplesMap [
+		   rr:subjectMap [
+			  rr:termType rr:BlankNode;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate oa:hasSource ;
+			  rr:objectMap [
+			     rr:column "id" ;
+			  ] ;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate <http://sw.islab.ntua.gr/annotation/onProperty> ;
+			  rr:objectMap [
+			     rr:constant "{@@iiproperty@@}" ;
+				 rr:termType rr:Literal ;
+			  ] ;
+		   ] ;
+		   rr:predicateObjectMap [
+		      rr:predicate <http://sw.islab.ntua.gr/annotation/onValue> ;
+			  rr:objectMap [
+			     rr:column "r0" ;
+				 rr:termType rr:Literal;
+			  ] ;
+		   ] ;
+		];
+	 ];
+   ] ;
+   rr:predicateObjectMap [ 
+      rr:predicate  oa:hasBody ;
+	  rr:objectMap [
+         rr:column "$";
+         dr:transformationReference <#TranslationTransformation> ;
+         rr:termType rr:Literal;
+         rr:language "en";
+      ] ;
+   ] .
+

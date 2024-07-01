@@ -1,0 +1,87 @@
+@prefix edm:   <http://www.europeana.eu/schemas/edm/> .
+@prefix http:  <http://www.w3.org/2011/http#> .
+@prefix ore:  <http://www.openarchives.org/ore/terms/> .
+@prefix rr:  <http://www.w3.org/ns/r2rml#> .
+
+@prefix dr:    <http://islab.ntua.gr/ns/d2rml#> .
+@prefix dris:  <http://islab.ntua.gr/ns/d2rml-is#> .
+
+###### SPECIFICATION #####
+
+<{@@SAGE_TEMPLATE_MAPPING_URI@@}/Order>
+   a  dr:D2RMLSpecification ;
+   dr:logicalDatasets  ( 
+                         <{@@SAGE_TEMPLATE_MAPPING_URI@@}/CollectionMapping> 
+                       ) .
+                       
+                       
+###### DATA SOURCES #####
+   
+<{@@SAGE_TEMPLATE_MAPPING_URI@@}/EuropeanaCollectionAPI>
+   a dris:HTTPSource ;
+   dris:httpRequest  [ 
+      http:absoluteURI  "https://www.europeana.eu/api/v2/search.json?wskey={@@API_KEY@@}&rows=20&cursor={@@cursor@@}&profile=minimal&query={@@QUERY@@}" ;
+      http:methodName  "GET" ;
+   ] ;
+   dris:parameter  [ 
+      a  dris:SimpleKeyRequestIterator ;
+      dris:name  "cursor" ;
+      dris:initialValue  "*" ;
+      rr:column  "$.nextCursor" ;
+      dr:columnFormulation  dris:JSONPath ;
+   ] .
+   
+<{@@SAGE_TEMPLATE_MAPPING_URI@@}/EuropeanaRecordAPI>
+   a  dris:HTTPSource ;
+   dris:httpRequest [ 
+      http:absoluteURI "https://www.europeana.eu/api/v2/record{@@NO_URL_ENCODE@@id@@}.rdf?wskey={@@api-key@@}" ;
+      http:methodName "GET" ;
+   ] .
+
+   
+###### TRANSFORMATIONS #####
+   
+<{@@SAGE_TEMPLATE_MAPPING_URI@@}/RecordTransformation>
+   dr:logicalArray [ 
+      a  dr:XMLItemArray ;
+      dr:source  <{@@SAGE_TEMPLATE_MAPPING_URI@@}/EuropeanaRecordAPI> ;
+      dr:iterator  "/rdf:RDF" ;
+   ] .
+
+   
+###### MAPPINGS #####
+   
+<{@@SAGE_TEMPLATE_MAPPING_URI@@}/CollectionMapping>
+   dr:logicalArray  [ 
+      a  dr:JSONItemArray ;
+      dr:source  <{@@SAGE_TEMPLATE_MAPPING_URI@@}/EuropeanaCollectionAPI> ;
+      dr:iterator  "$.items" ;
+   ] ;
+
+   dr:transformation  [
+      dr:name "RecordTransformation" ;
+      dr:dataref <{@@SAGE_TEMPLATE_MAPPING_URI@@}/RecordTransformation> ;
+      dr:parameterBinding  [ 
+         dr:parameter  "api-key" ;
+         rr:constant  "{@@API_KEY@@}" ;
+      ] ;
+      dr:parameterBinding  [ 
+         dr:parameter  "id" ;
+         rr:column  "$.id" ;
+      ] ;
+   ] ;
+   
+   dr:rdfMap [ 
+      rr:column  "RecordTransformation~~/rdf:RDF/edm:ProvidedCHO" ;
+      rr:termType  dr:RDF_XML
+   ] ;
+   
+   dr:rdfMap [ 
+      rr:column  "RecordTransformation~~/rdf:RDF/ore:Aggregation" ;
+      rr:termType  dr:RDF_XML
+   ] ;
+   
+   dr:rdfMap [ 
+      rr:column  "RecordTransformation~~/rdf:RDF/ore:Proxy" ;
+      rr:termType  dr:RDF_XML
+   ] .

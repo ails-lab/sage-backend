@@ -1,0 +1,70 @@
+{
+ "@context": {
+    "xsd":     "http://www.w3.org/2001/XMLSchema#",
+    "xpathfn" : "http://www.w3.org/2005/xpath-functions/",
+
+    "id":      {"@type": "@id", "@id": "@id"},
+    "type":    {"@type": "@id", "@id": "@type"},
+
+	"triplesMap":    {"@id": "http://islab.ntua.gr/ns/d2rml#triplesMap", "@type": "@id"},
+	"triplesMaps":    {"@id": "http://islab.ntua.gr/ns/d2rml#triplesMaps", "@container": "@list"},
+	
+	"rdfMap":    {"@id": "http://islab.ntua.gr/ns/d2rml#rdfMap", "@type": "@id"},
+	"logicalOutputMap":    {"@id": "http://islab.ntua.gr/ns/d2rml#logicalOutputMap", "@type": "@id"},
+	"textLinesMap":    {"@id": "http://islab.ntua.gr/ns/d2rml#textLinesMap", "@type": "@id"},
+	"languageMap":    {"@id": "http://islab.ntua.gr/ns/d2rml#languageMap", "@type": "@id"},
+	"logicalSource":    {"@id": "http://islab.ntua.gr/ns/d2rml#logicalSource", "@type": "@id"},
+	"logicalSources":    {"@id": "http://islab.ntua.gr/ns/d2rml#logicalSources", "@container": "@list"},
+	"logicalArray":    {"@id": "http://islab.ntua.gr/ns/d2rml#logicalArray", "@type": "@id"},
+	"logicalArrays":    {"@id": "http://islab.ntua.gr/ns/d2rml#logicalArrays", "@container": "@list"},
+	"logicalTables":    {"@id": "http://islab.ntua.gr/ns/d2rml#logicalTables", "@container": "@list"},
+	"logicalGraph":    {"@id": "http://islab.ntua.gr/ns/d2rml#logicalGraph", "@type": "@id"},
+	
+	"parameterBinding" : {"@id": "http://islab.ntua.gr/ns/d2rml#parameterBinding", "@type": "@id"},
+	"function" : {"@id": "http://islab.ntua.gr/ns/d2rml#function", "@type": "@id"},
+	"cases" : {"@id": "http://islab.ntua.gr/ns/d2rml#cases", "@container": "@list"},
+	"condition" : {"@id": "http://islab.ntua.gr/ns/d2rml#condition", "@type": "@id"},
+	"name" : {"@id": "http://islab.ntua.gr/ns/d2rml#name" },
+	"source" : {"@id": "http://islab.ntua.gr/ns/d2rml#source", "@type": "@id" },
+	"sparqlQuery" : {"@id": "http://islab.ntua.gr/ns/d2rml#sparqlQuery" },
+	
+	"D2RMLSpecification" : "http://islab.ntua.gr/ns/d2rml#D2RMLSpecification",
+	
+	"logicalTable":    {"@id": "http://www.w3.org/ns/r2rml#logicalTable", "@type": "@id"},
+	"tableName":    {"@id": "http://www.w3.org/ns/r2rml#tableName"},
+	"sqlQuery":    {"@id": "http://www.w3.org/ns/r2rml#sqlQuery"},
+	"sqlVersion":    {"@id": "http://www.w3.org/ns/r2rml#sqlVersion"},
+	"version":    {"@id": "http://www.w3.org/ns/r2rml#version"},
+	"subject":    {"@id": "http://www.w3.org/ns/r2rml#subject", "@type": "@id"},
+	"subjectMap":    {"@id": "http://www.w3.org/ns/r2rml#subjectMap", "@type": "@id"},
+	"template":    {"@id": "http://www.w3.org/ns/r2rml#template"},
+	"column":    {"@id": "http://www.w3.org/ns/r2rml#column"},
+	"constant":    {"@id": "http://www.w3.org/ns/r2rml#constant" },
+	"class":    {"@id": "http://www.w3.org/ns/r2rml#class", "@type": "@id"},
+	"predicate":    {"@id": "http://www.w3.org/ns/r2rml#predicate", "@type": "@id"},
+	"predicateMap":    {"@id": "http://www.w3.org/ns/r2rml#predicateMap", "@type": "@id"},
+	"predicateObjectMap":    {"@id": "http://www.w3.org/ns/r2rml#predicateObjectMap", "@type": "@id"},
+	"object":    {"@id": "http://www.w3.org/ns/r2rml#object" },
+	"objectMap":    {"@id": "http://www.w3.org/ns/r2rml#objectMap", "@type": "@id"},
+	"graph":    {"@id": "http://www.w3.org/ns/r2rml#graph", "@type": "@id"},
+	"graphMap":    {"@id": "http://www.w3.org/ns/r2rml#graphMap", "@type": "@id"},
+	"parentTriplesMap":    {"@id": "http://www.w3.org/ns/r2rml#parentTriplesMap", "@type": "@id"},
+	"termType":    {"@id": "http://www.w3.org/ns/r2rml#termType", "@type": "@id"},
+	"datatype":    {"@id": "http://www.w3.org/ns/r2rml#datatype", "@type": "@id"},
+	"language":    {"@id": "http://www.w3.org/ns/r2rml#language"},
+	
+	
+	
+	"TriplesMap":    "http://www.w3.org/ns/r2rml#TriplesMap",
+	"IRI":    "http://www.w3.org/ns/r2rml#IRI",
+	"Literal":    "http://www.w3.org/ns/r2rml#Literal",
+	"BlankNode":    "http://www.w3.org/ns/r2rml#BlankNode",
+	"BaseTableOrView":    "http://www.w3.org/ns/r2rml#BaseTableOrView",
+	"R2RMLView":    "http://www.w3.org/ns/r2rml#R2RMLView"
+	
+
+  },
+  
+  "type": "D2RMLSpecification"
+  
+}

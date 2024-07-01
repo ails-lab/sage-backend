@@ -1,0 +1,34 @@
+{
+ "@context": {
+    "xsd":     "http://www.w3.org/2001/XMLSchema#",
+
+    "id":      {"@type": "@id", "@id": "@id"},
+    "type":    {"@type": "@id", "@id": "@type"},
+
+    "DCATDataset":           "http://www.w3.org/ns/dcat#Dataset",
+
+    "VOIDDataset":           "http://rdfs.org/ns/void#Dataset",
+	"class":    {"@id": "http://rdfs.org/ns/void#class", "@type": "@id"},
+	"classPartition": {"@id": "http://rdfs.org/ns/void#classPartition", "@container": "@set"},
+	"distinctObjects":    {"@id": "http://rdfs.org/ns/void#distinctObjects"},
+	"distinctSubjects":    {"@id": "http://rdfs.org/ns/void#distinctSubjects"},
+	"entities":    {"@id": "http://rdfs.org/ns/void#entities"},
+	"property":    {"@id": "http://rdfs.org/ns/void#property", "@type": "@id"},
+	"propertyPartition": {"@id": "http://rdfs.org/ns/void#propertyPartition", "@container": "@set"},
+	"triples":    {"@id": "http://rdfs.org/ns/void#triples"},
+	"uriSpace": {"@id": "http://rdfs.org/ns/void#uriSpace"},
+
+	"modified":    {"@id": "http://purl.org/dc/terms/modified", "@type": "xsd:dateTime"},
+	"issued":    {"@id": "http://purl.org/dc/terms/issued", "@type": "xsd:dateTime"},
+	"created":    {"@id": "http://purl.org/dc/terms/created", "@type": "xsd:dateTime"},
+	"title":    {"@id": "http://purl.org/dc/terms/title"},
+	"identifier":    {"@id": "http://purl.org/dc/terms/identifier"},
+
+	"rangeIncludes":    {"@id": "http://purl.org/dc/dcam/rangeIncludes", "@type": "@id"}
+
+  },
+  
+  "@type": "DCATDataset"
+  
+}
+

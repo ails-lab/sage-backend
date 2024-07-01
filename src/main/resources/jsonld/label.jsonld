@@ -1,0 +1,14 @@
+{
+ "@context": {
+    "xsd":     "http://www.w3.org/2001/XMLSchema#",
+
+    "id":      {"@type": "@id", "@id": "@id"},
+    "type":    {"@type": "@id", "@id": "@type"},
+    "language":    "@language",
+    "value":    "@value",
+
+	"label":    { "@id": "http://www.w3.org/2000/01/rdf-schema#label", "@container": "@set"},
+	"description":   { "@id": "http://purl.org/dc/terms/description", "@container": "@set"}
+  }
+}
+

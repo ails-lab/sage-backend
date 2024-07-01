@@ -1,0 +1,27 @@
+{
+ "@context": {
+    "xsd":     "http://www.w3.org/2001/XMLSchema#",
+
+    "id":      {"@type": "@id", "@id": "@id"},
+    "type":    {"@type": "@id", "@id": "@type"},
+
+    "DCATDataset":           "http://www.w3.org/ns/dcat#Dataset",
+    "VOIDDataset":           "http://rdfs.org/ns/void#Dataset",
+    "ThesaurusCollection":           "http://sw.islab.ntua.gr/semaspace/model/ThesaurusCollection",
+    "SKOSThesaurus": "http://sw.islab.ntua.gr/semaspace/model/SKOSThesaurus", 
+    "VocabularyCollection": "http://sw.islab.ntua.gr/semaspace/model/VocabularyCollection",
+
+	"issued":    {"@id": "http://purl.org/dc/terms/issued", "@type": "xsd:dateTime"},
+	"creator":    {"@id": "http://purl.org/dc/terms/creator"},
+	"title":    {"@id": "http://purl.org/dc/terms/title"},
+	"identifier":    {"@id": "http://purl.org/dc/terms/identifier"},
+	"language":    {"@id": "http://purl.org/dc/terms/language", "@container": "@set"},
+
+    "scheme":    {"@id": "http://sw.islab.ntua.gr/semaspace/model/scheme", "@type": "@id", "@container": "@set"}
+
+
+  },
+  
+  "@type": "DCATDataset"
+  
+}
